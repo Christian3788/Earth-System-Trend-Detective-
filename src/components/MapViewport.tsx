@@ -2,13 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Globe,
   Map as MapIcon,
-  RotateCcw,
-  ZoomIn,
-  ZoomOut,
   MoveHorizontal,
   Crosshair,
   Cloud,
 } from 'lucide-react';
+import { ThreeGlobeStage } from './ThreeGlobeStage';
 import {
   DATA_MODE_META,
   DataMode,
@@ -168,6 +166,8 @@ export const MapViewport: React.FC<MapViewportProps> = ({
   const [overlayOpacity, setOverlayOpacity] = useState(0.52);
   const [showClouds, setShowClouds] = useState(true);
   const [showGraticules, setShowGraticules] = useState(true);
+  const [webglUnavailable, setWebglUnavailable] = useState(false);
+  const [wheelTick, setWheelTick] = useState(0);
 
   const [hoverInfo, setHoverInfo] = useState<{
     lat: number;
@@ -192,8 +192,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
     autoSpin: false,
   });
 
-  const [globeZoomLabel, setGlobeZoomLabel] = useState(1.0);
-  const [autoSpin, setAutoSpin] = useState(false);
+  const [autoSpin] = useState(false);
 
   const blueMarble = useMemo(() => getBlueMarbleData(), []);
 
@@ -206,9 +205,9 @@ export const MapViewport: React.FC<MapViewportProps> = ({
         significanceMask,
         maskNoise,
         overlayOpacity,
-        showClouds
+        viewMode === '2d' ? showClouds : false
       ),
-    [anomalyGrid, dataset, dataMode, significanceMask, maskNoise, overlayOpacity, showClouds]
+    [anomalyGrid, dataset, dataMode, significanceMask, maskNoise, overlayOpacity, showClouds, viewMode]
   );
 
   const compareTex = useMemo(
@@ -285,7 +284,10 @@ export const MapViewport: React.FC<MapViewportProps> = ({
     return { x0, y0, mapW, mapH };
   };
 
+  const useThreeJs = viewMode === '3d' && !webglUnavailable;
+
   useEffect(() => {
+    if (useThreeJs) return;
     const canvas = canvasRef.current;
     const container = containerRef.current;
     if (!canvas || !container) return;
@@ -321,23 +323,26 @@ export const MapViewport: React.FC<MapViewportProps> = ({
 
       const elapsed = prefersReducedMotion ? 0 : (now - startTime) * 0.001;
 
-      if (viewMode === '2d') {
-        draw2DMap(ctx, cssW, cssH, elapsed);
-      } else {
+      if (viewMode === '3d') {
         update3DCamera();
         draw3DGlobe(ctx, cssW, cssH, elapsed);
+      } else {
+        draw2DMap(ctx, cssW, cssH, elapsed);
       }
 
       ctx.restore();
 
+      const gs = globeStateRef.current;
       const needsAnimation =
         !prefersReducedMotion &&
-        (geodesicPts.length > 0 ||
-          (viewMode === '3d' &&
-            (globeStateRef.current.autoSpin ||
-              Math.abs(globeStateRef.current.velLon) > 0.01 ||
-              Math.abs(globeStateRef.current.velLat) > 0.01 ||
-              globeStateRef.current.targetLon !== null)));
+        (viewMode === '3d'
+          ? gs.isDragging ||
+            gs.targetLon !== null ||
+            Math.abs(gs.velLon) > 0.01 ||
+            Math.abs(gs.velLat) > 0.01 ||
+            gs.autoSpin ||
+            geodesicPts.length > 0
+          : geodesicPts.length > 0);
 
       if (needsAnimation) {
         rafId = requestAnimationFrame(drawFrame);
@@ -900,6 +905,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
       resizeObs.disconnect();
     };
   }, [
+    useThreeJs,
     viewMode,
     blueMarble,
     primaryTex,
@@ -921,6 +927,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
     dataset,
     dataMode,
     autoSpin,
+    wheelTick,
   ]);
 
   const pointerToLatLon = (clientX: number, clientY: number): { lat: number; lon: number } | null => {
@@ -1051,28 +1058,10 @@ export const MapViewport: React.FC<MapViewportProps> = ({
 
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
     if (viewMode !== '3d') return;
-    e.preventDefault();
     const gs = globeStateRef.current;
-    const nextZoom = Math.max(0.68, Math.min(2.3, gs.zoom - e.deltaY * 0.0012));
-    gs.zoom = nextZoom;
-    setGlobeZoomLabel(nextZoom);
-  };
-
-  const adjustZoom = (delta: number) => {
-    const gs = globeStateRef.current;
-    const nextZoom = Math.max(0.68, Math.min(2.3, gs.zoom + delta));
-    gs.zoom = nextZoom;
-    setGlobeZoomLabel(nextZoom);
-  };
-
-  const reset3DView = () => {
-    const gs = globeStateRef.current;
-    gs.zoom = 1.0;
-    gs.targetLon = tele.id === 'iod' ? 44 : tele.focusLon;
-    gs.targetLat = tele.id === 'iod' ? 10 : tele.focusLat;
-    gs.velLon = 0;
-    gs.velLat = 0;
-    setGlobeZoomLabel(1.0);
+    const factor = e.deltaY < 0 ? 1.1 : 0.9;
+    gs.zoom = Math.max(0.75, Math.min(2.4, gs.zoom * factor));
+    setWheelTick((t) => t + 1);
   };
 
   return (
@@ -1199,47 +1188,23 @@ export const MapViewport: React.FC<MapViewportProps> = ({
                 </select>
               )}
             </div>
-          ) : (
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => setAutoSpin((s) => !s)}
-                className={`px-2.5 py-1 text-xs font-medium rounded-md border whitespace-nowrap cursor-pointer ${
-                  autoSpin
-                    ? 'bg-[#0B3D91] text-white border-[#0B3D91]'
-                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                }`}
-              >
-                {autoSpin ? 'Spinning' : 'Auto-Spin'}
-              </button>
-              <button
-                type="button"
-                aria-label="Zoom out"
-                onClick={() => adjustZoom(-0.2)}
-                className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 cursor-pointer"
-              >
-                <ZoomOut className="w-3.5 h-3.5" />
-              </button>
-              <span className="text-[11px] font-mono text-slate-600 w-9 text-center tabular-nums">
-                {globeZoomLabel.toFixed(1)}x
+          ) : webglUnavailable ? (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-medium text-slate-600 px-2 py-1 rounded border border-slate-200 bg-slate-50 whitespace-nowrap">
+                3D Orthographic Globe · Drag to Orbit · Click to Probe
               </span>
               <button
                 type="button"
-                aria-label="Zoom in"
-                onClick={() => adjustZoom(0.2)}
-                className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 cursor-pointer"
+                onClick={() => setWebglUnavailable(false)}
+                className="text-[11px] font-medium text-[#0B3D91] px-2 py-1 rounded border border-slate-300 bg-white hover:bg-slate-50 whitespace-nowrap cursor-pointer"
               >
-                <ZoomIn className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                aria-label="Reset globe orientation"
-                onClick={reset3DView}
-                className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
+                Retry WebGL
               </button>
             </div>
+          ) : (
+            <span className="text-[11px] font-medium text-slate-600 px-2 py-1 rounded border border-slate-200 bg-slate-50 whitespace-nowrap">
+              Three.js PBR Observatory · Drag to Orbit · Click to Probe
+            </span>
           )}
         </div>
       </div>
@@ -1249,25 +1214,54 @@ export const MapViewport: React.FC<MapViewportProps> = ({
         ref={containerRef}
         className="flex-1 relative min-h-[360px] sm:min-h-[440px] select-none overflow-hidden"
       >
-        <canvas
-          ref={canvasRef}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerLeave={() => setHoverInfo(null)}
-          onWheel={handleWheel}
-          className={`w-full h-full block touch-none ${
-            viewMode === '3d' ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair'
-          }`}
-        />
+        {useThreeJs ? (
+          <ThreeGlobeStage
+            primaryTex={primaryTex}
+            dataset={dataset}
+            dataMode={dataMode}
+            teleconnectionId={teleconnectionId}
+            year={year}
+            month={month}
+            poleA={effectivePoles.poleA}
+            poleB={effectivePoles.poleB}
+            probedPoint={probedPoint}
+            showClouds={showClouds}
+            onToggleClouds={setShowClouds}
+            showGraticules={showGraticules}
+            onToggleGraticules={setShowGraticules}
+            onHoverLatLon={(coords) => {
+              if (!coords) {
+                setHoverInfo(null);
+                return;
+              }
+              const { val, significant } = lookupAt(coords.lat, coords.lon);
+              setHoverInfo({ lat: coords.lat, lon: coords.lon, val, significant });
+            }}
+            onProbeLatLon={onProbePoint}
+            onWebglUnavailable={() => setWebglUnavailable(true)}
+          />
+        ) : (
+          <canvas
+            ref={canvasRef}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onWheel={handleWheel}
+            onPointerLeave={() => setHoverInfo(null)}
+            className="w-full h-full block touch-none cursor-crosshair"
+          />
+        )}
 
         {/* Floating Live Coordinate & Anomaly HUD */}
         <div
-          className={`absolute bottom-3 left-3 px-2.5 py-1.5 rounded-md border text-[11px] font-mono tabular-nums pointer-events-none flex items-center gap-2.5 ${
+          className={`absolute ${
+            viewMode === '3d' ? 'top-3 left-3' : 'bottom-3 left-3'
+          } px-2.5 py-1.5 rounded-md border text-[11px] font-mono tabular-nums pointer-events-none flex items-center gap-2.5 ${
             viewMode === '3d'
-              ? 'bg-slate-950/80 border-slate-700 text-slate-100'
+              ? 'border-slate-700 text-slate-100'
               : 'bg-white/95 border-slate-300 text-slate-800 shadow-xs'
           }`}
+          style={viewMode === '3d' ? { backgroundColor: 'rgba(2, 6, 23, 0.88)' } : undefined}
         >
           <Crosshair className="w-3.5 h-3.5 shrink-0 text-[#06B6D4]" />
           {hoverInfo ? (
@@ -1291,7 +1285,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
           ) : (
             <span>
               {viewMode === '3d'
-                ? 'Drag to spin Blue Marble globe · Scroll to zoom · Click to probe'
+                ? 'Drag to orbit Blue Marble · Scroll to zoom · Click surface to probe'
                 : 'Click map to probe point · Drag curtain to compare years'}
             </span>
           )}

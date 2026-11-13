@@ -1,5 +1,13 @@
 import React, { useMemo, useState } from 'react';
-import { Download, Crosshair, TrendingUp, BarChart3, CheckCircle2, AlertCircle } from 'lucide-react';
+import {
+  Download,
+  Crosshair,
+  TrendingUp,
+  BarChart3,
+  CheckCircle2,
+  AlertCircle,
+  MessageSquare,
+} from 'lucide-react';
 import {
   DATA_MODE_META,
   DataMode,
@@ -22,8 +30,9 @@ import {
   formatPValue,
 } from '../engine/statistics';
 import { TimeSeriesCanvas } from './TimeSeriesCanvas';
+import { ChatbotPanel, ChatMessage } from './ChatbotPanel';
 
-export type AnalysisTab = 'detective' | 'identify' | 'timeplot';
+export type AnalysisTab = 'detective' | 'identify' | 'timeplot' | 'chat';
 
 interface AnalysisPanelProps {
   activeTab: AnalysisTab;
@@ -59,6 +68,8 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
 }) => {
   const [plotTarget, setPlotTarget] = useState<PlotTarget>('driver');
   const [includeFullHorizon, setIncludeFullHorizon] = useState<boolean>(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
 
   const tele = TELECONNECTIONS[teleconnectionId];
   const modeMeta = DATA_MODE_META[dataMode];
@@ -269,21 +280,21 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
       <div
         role="tablist"
         aria-label="Analysis suite tabs"
-        className="grid grid-cols-3 border-b border-slate-200 bg-slate-50 shrink-0"
+        className="grid grid-cols-4 border-b border-slate-200 bg-slate-50 shrink-0"
       >
         <button
           type="button"
           role="tab"
           aria-selected={activeTab === 'detective'}
           onClick={() => onChangeTab('detective')}
-          className={`px-3 py-3 text-xs font-semibold flex items-center justify-center gap-1.5 border-b-2 transition-colors whitespace-nowrap cursor-pointer ${
+          className={`px-1.5 py-3 text-[11px] font-semibold flex items-center justify-center gap-1 border-b-2 transition-colors whitespace-nowrap cursor-pointer ${
             activeTab === 'detective'
               ? 'border-[#0B3D91] text-[#0B3D91] bg-white'
               : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
           }`}
         >
           <TrendingUp className="w-3.5 h-3.5 shrink-0" />
-          Trend Detective
+          Detective
         </button>
 
         <button
@@ -291,14 +302,14 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
           role="tab"
           aria-selected={activeTab === 'identify'}
           onClick={() => onChangeTab('identify')}
-          className={`px-3 py-3 text-xs font-semibold flex items-center justify-center gap-1.5 border-b-2 transition-colors whitespace-nowrap cursor-pointer ${
+          className={`px-1.5 py-3 text-[11px] font-semibold flex items-center justify-center gap-1 border-b-2 transition-colors whitespace-nowrap cursor-pointer ${
             activeTab === 'identify'
               ? 'border-[#0B3D91] text-[#0B3D91] bg-white'
               : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
           }`}
         >
           <Crosshair className="w-3.5 h-3.5 shrink-0" />
-          Identify Point
+          Identify
         </button>
 
         <button
@@ -306,7 +317,7 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
           role="tab"
           aria-selected={activeTab === 'timeplot'}
           onClick={() => onChangeTab('timeplot')}
-          className={`px-3 py-3 text-xs font-semibold flex items-center justify-center gap-1.5 border-b-2 transition-colors whitespace-nowrap cursor-pointer ${
+          className={`px-1.5 py-3 text-[11px] font-semibold flex items-center justify-center gap-1 border-b-2 transition-colors whitespace-nowrap cursor-pointer ${
             activeTab === 'timeplot'
               ? 'border-[#0B3D91] text-[#0B3D91] bg-white'
               : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
@@ -315,10 +326,31 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
           <BarChart3 className="w-3.5 h-3.5 shrink-0" />
           Time Plot
         </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'chat'}
+          onClick={() => onChangeTab('chat')}
+          className={`px-1.5 py-3 text-[11px] font-semibold flex items-center justify-center gap-1 border-b-2 transition-colors whitespace-nowrap cursor-pointer ${
+            activeTab === 'chat'
+              ? 'border-[#0B3D91] text-[#0B3D91] bg-white'
+              : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+          }`}
+        >
+          <MessageSquare className="w-3.5 h-3.5 shrink-0" />
+          Ask AI
+        </button>
       </div>
 
-      {/* Scrollable Tab Body */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      {/* Tab Body */}
+      <div
+        className={
+          activeTab === 'chat'
+            ? 'flex-1 min-h-0 flex flex-col p-4 overflow-hidden'
+            : 'flex-1 overflow-y-auto p-4 space-y-4'
+        }
+      >
         {activeTab === 'detective' && (
           <div className="space-y-3.5">
             <div className="flex items-center justify-between text-xs text-slate-500">
@@ -565,6 +597,20 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                 </div>
               </div>
             </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setPendingPrompt(
+                  `Provide an Earth system Trend Detective briefing for ${dataset.name} under ${tele.label} (${modeMeta.shortLabel}).`
+                );
+                onChangeTab('chat');
+              }}
+              className="w-full px-3 py-2 text-xs font-semibold rounded-md border border-[#0B3D91] bg-blue-50/50 text-[#0B3D91] hover:bg-[#0B3D91] hover:text-white transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              Ask Trend Detective AI About This View
+            </button>
           </div>
         )}
 
@@ -859,6 +905,41 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
               </div>
             </div>
           </div>
+        )}
+
+        {activeTab === 'chat' && (
+          <ChatbotPanel
+            messages={chatMessages}
+            onChangeMessages={setChatMessages}
+            dataset={dataset}
+            teleconnectionId={teleconnectionId}
+            dataMode={dataMode}
+            year={year}
+            month={month}
+            driverStats={driverSeries.stats}
+            poleAVal={poleAVal}
+            poleBVal={poleBVal}
+            poleBStats={poleBSeries ? poleBSeries.stats : null}
+            historicalSlope={
+              historicalBaselineSeries
+                ? historicalBaselineSeries.stats.slopePerDecade
+                : null
+            }
+            probedInfo={
+              probeAnalysis
+                ? {
+                    lat: probeAnalysis.lat,
+                    lon: probeAnalysis.lon,
+                    region: probeAnalysis.region,
+                    observed: probeAnalysis.observed,
+                    domainMasked: probeAnalysis.domainMasked,
+                    stats: probeAnalysis.series ? probeAnalysis.series.stats : null,
+                  }
+                : null
+            }
+            pendingPrompt={pendingPrompt}
+            onClearPendingPrompt={() => setPendingPrompt(null)}
+          />
         )}
       </div>
     </aside>

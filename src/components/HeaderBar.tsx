@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookOpen } from 'lucide-react';
+import { BookOpen, MessageSquare } from 'lucide-react';
 import { DataMode, TELECONNECTIONS, TeleconnectionId } from '../data/datasets';
 
 interface HeaderBarProps {
@@ -8,6 +8,7 @@ interface HeaderBarProps {
   dataMode: DataMode;
   onChangeDataMode: (mode: DataMode) => void;
   onOpenResources: () => void;
+  onOpenChat: () => void;
 }
 
 const DRIVER_ORDER: TeleconnectionId[] = ['iod', 'enso', 'arctic', 'none'];
@@ -18,6 +19,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   dataMode,
   onChangeDataMode,
   onOpenResources,
+  onOpenChat,
 }) => {
   const isProjected = dataMode !== 'historical';
 
@@ -63,6 +65,14 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
               ? 'ESDE 2.0 · Projected RCP 4.5 (2025–2099)'
               : 'ESDE 2.0 · Projected RCP 8.5 (2025–2099)'}
           </span>
+          <button
+            type="button"
+            onClick={onOpenChat}
+            className="px-3 py-1.5 text-xs font-medium rounded-md bg-white text-[#0B3D91] hover:bg-blue-50 transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            Detective AI
+          </button>
           <button
             type="button"
             onClick={onOpenResources}
