@@ -21,10 +21,20 @@ export const TimeSeriesCanvas: React.FC<TimeSeriesCanvasProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
 
-  const activeIdx = Math.max(
-    0,
-    Math.min(points.length - 1, (activeYear - 2005) * 12 + (activeMonth - 1))
-  );
+  const activeIdx = React.useMemo(() => {
+    if (points.length === 0) return 0;
+    const targetVal = activeYear * 12 + activeMonth;
+    let bestIdx = 0;
+    let bestDiff = Infinity;
+    for (let i = 0; i < points.length; i++) {
+      const diff = Math.abs(points[i].year * 12 + points[i].month - targetVal);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        bestIdx = i;
+      }
+    }
+    return bestIdx;
+  }, [points, activeYear, activeMonth]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -112,9 +122,18 @@ export const TimeSeriesCanvas: React.FC<TimeSeriesCanvasProps> = ({
       }
 
       ctx.textAlign = 'center';
-      const labelYears = [2005, 2010, 2015, 2020, 2024];
+      const firstYear = points[0].year;
+      const lastYear = points[points.length - 1].year;
+      const labelYears =
+        lastYear <= 2024
+          ? [2005, 2010, 2015, 2020, 2024]
+          : firstYear >= 2025
+          ? [2025, 2040, 2060, 2080, 2099]
+          : [2005, 2024, 2050, 2075, 2099];
+
       for (const yr of labelYears) {
-        const idx = Math.min(points.length - 1, (yr - 2005) * 12);
+        let idx = points.findIndex((pt) => pt.year >= yr);
+        if (idx === -1) idx = points.length - 1;
         const px = xFor(idx);
         ctx.strokeStyle = '#E2E8F0';
         ctx.lineWidth = 1;
@@ -125,6 +144,30 @@ export const TimeSeriesCanvas: React.FC<TimeSeriesCanvasProps> = ({
 
         ctx.fillStyle = '#64748B';
         ctx.fillText(String(yr), px, padT + plotH + 15);
+      }
+
+      // Regime boundary marker when viewing full 2005-2099 trajectory
+      if (firstYear <= 2024 && lastYear >= 2025) {
+        const boundaryIdx = points.findIndex((pt) => pt.year >= 2025);
+        if (boundaryIdx > 0) {
+          const bx = xFor(boundaryIdx - 0.5);
+          ctx.save();
+          ctx.strokeStyle = '#64748B';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([3, 3]);
+          ctx.beginPath();
+          ctx.moveTo(bx, padT);
+          ctx.lineTo(bx, padT + plotH);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = '#475569';
+          ctx.font = '600 9px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+          ctx.textAlign = 'left';
+          ctx.fillText('Proj →', bx + 4, padT + 11);
+          ctx.textAlign = 'right';
+          ctx.fillText('← Obs', bx - 4, padT + 11);
+          ctx.restore();
+        }
       }
 
       const actX = xFor(activeIdx);
@@ -363,7 +406,7 @@ export const TimeSeriesCanvas: React.FC<TimeSeriesCanvasProps> = ({
         <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-600 px-0.5">
           <span className="inline-flex items-center gap-1.5">
             <span className="w-3.5 h-0.5 bg-slate-400 inline-block" aria-hidden="true" />
-            Raw Monthly
+            {points[points.length - 1]?.year > 2024 ? 'Raw Samples' : 'Raw Monthly'}
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span className="w-3.5 h-0.5 bg-[#0B3D91] inline-block" aria-hidden="true" />

@@ -10,10 +10,13 @@ import {
   Cloud,
 } from 'lucide-react';
 import {
+  DATA_MODE_META,
+  DataMode,
   DatasetSpec,
   MONTH_ABBR,
   TELECONNECTIONS,
   TeleconnectionId,
+  getEffectiveBounds,
   getEffectivePoles,
 } from '../data/datasets';
 import {
@@ -35,6 +38,7 @@ export type ViewMode = '2d' | '3d';
 interface MapViewportProps {
   dataset: DatasetSpec;
   teleconnectionId: TeleconnectionId;
+  dataMode: DataMode;
   year: number;
   month: number;
   viewMode: ViewMode;
@@ -72,6 +76,7 @@ for (let i = 0; i < 140; i++) {
 function build2DCompositeCanvas(
   grid: Float32Array,
   dataset: DatasetSpec,
+  dataMode: DataMode,
   significanceMask: Uint8Array,
   maskNoise: boolean,
   overlayOpacity: number,
@@ -84,7 +89,8 @@ function build2DCompositeCanvas(
   const ctx = canvas.getContext('2d')!;
   const img = ctx.createImageData(BM_WIDTH, BM_HEIGHT);
   const data = img.data;
-  const absMax = Math.max(Math.abs(dataset.min), Math.abs(dataset.max), 1e-6);
+  const bounds = getEffectiveBounds(dataset, dataMode);
+  const absMax = Math.max(Math.abs(bounds.min), Math.abs(bounds.max), 1e-6);
 
   for (let y = 0; y < BM_HEIGHT; y++) {
     const gy = Math.min(179, y >> 1);
@@ -135,6 +141,7 @@ function build2DCompositeCanvas(
 export const MapViewport: React.FC<MapViewportProps> = ({
   dataset,
   teleconnectionId,
+  dataMode,
   year,
   month,
   viewMode,
@@ -195,12 +202,13 @@ export const MapViewport: React.FC<MapViewportProps> = ({
       build2DCompositeCanvas(
         anomalyGrid,
         dataset,
+        dataMode,
         significanceMask,
         maskNoise,
         overlayOpacity,
         showClouds
       ),
-    [anomalyGrid, dataset, significanceMask, maskNoise, overlayOpacity, showClouds]
+    [anomalyGrid, dataset, dataMode, significanceMask, maskNoise, overlayOpacity, showClouds]
   );
 
   const compareTex = useMemo(
@@ -208,12 +216,13 @@ export const MapViewport: React.FC<MapViewportProps> = ({
       build2DCompositeCanvas(
         compareGrid,
         dataset,
+        dataMode,
         significanceMask,
         maskNoise,
         overlayOpacity,
         showClouds
       ),
-    [compareGrid, dataset, significanceMask, maskNoise, overlayOpacity, showClouds]
+    [compareGrid, dataset, dataMode, significanceMask, maskNoise, overlayOpacity, showClouds]
   );
 
   const tele = TELECONNECTIONS[teleconnectionId];
@@ -287,7 +296,8 @@ export const MapViewport: React.FC<MapViewportProps> = ({
 
     const sphereBufCanvas = document.createElement('canvas');
     const sphereBufCtx = sphereBufCanvas.getContext('2d')!;
-    const absMax = Math.max(Math.abs(dataset.min), Math.abs(dataset.max), 1e-6);
+    const bounds = getEffectiveBounds(dataset, dataMode);
+    const absMax = Math.max(Math.abs(bounds.min), Math.abs(bounds.max), 1e-6);
 
     let rafId = 0;
     const startTime = performance.now();
@@ -490,18 +500,23 @@ export const MapViewport: React.FC<MapViewportProps> = ({
         ctx.stroke();
 
         ctx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, monospace';
-        const leftTxt = `${MONTH_ABBR[month - 1]} ${year}`;
-        const rightTxt = `Compare: ${MONTH_ABBR[month - 1]} ${compareYear}`;
+        const modeTag = dataMode !== 'historical' ? ` · ${DATA_MODE_META[dataMode].shortLabel}` : '';
+        const leftTxt = `${MONTH_ABBR[month - 1]} ${year}${year > 2024 ? modeTag : ''}`;
+        const rightTxt = `Compare: ${MONTH_ABBR[month - 1]} ${compareYear}${
+          compareYear <= 2024 && dataMode !== 'historical' ? ' (Obs)' : compareYear > 2024 ? modeTag : ''
+        }`;
+        const leftW = Math.ceil(ctx.measureText(leftTxt).width) + 14;
+        const rightW = Math.ceil(ctx.measureText(rightTxt).width) + 14;
 
-        if (splitX - x0 > 90) {
+        if (splitX - x0 > leftW + 14) {
           ctx.fillStyle = 'rgba(11, 61, 145, 0.92)';
-          ctx.fillRect(splitX - 84, y0 + 8, 76, 20);
+          ctx.fillRect(splitX - leftW - 8, y0 + 8, leftW, 20);
           ctx.fillStyle = '#FFFFFF';
-          ctx.fillText(leftTxt, splitX - 77, y0 + 21);
+          ctx.fillText(leftTxt, splitX - leftW - 1, y0 + 21);
         }
-        if (x0 + mapW - splitX > 130) {
+        if (x0 + mapW - splitX > rightW + 14) {
           ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
-          ctx.fillRect(splitX + 8, y0 + 8, 122, 20);
+          ctx.fillRect(splitX + 8, y0 + 8, rightW, 20);
           ctx.fillStyle = '#FFFFFF';
           ctx.fillText(rightTxt, splitX + 15, y0 + 21);
         }
@@ -904,6 +919,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
     showClouds,
     showGraticules,
     dataset,
+    dataMode,
     autoSpin,
   ]);
 
@@ -1171,9 +1187,13 @@ export const MapViewport: React.FC<MapViewportProps> = ({
                   onChange={(e) => onChangeCompareYear(Number(e.target.value))}
                   className="px-2 py-1 text-xs font-mono font-medium bg-white border border-slate-300 rounded-md text-slate-800 focus:outline-none focus:border-[#0B3D91] cursor-pointer"
                 >
-                  {Array.from({ length: 20 }, (_, i) => 2005 + i).map((yr) => (
+                  {(dataMode === 'historical'
+                    ? Array.from({ length: 20 }, (_, i) => 2005 + i)
+                    : [2005, 2015, 2020, 2024, 2030, 2040, 2050, 2060, 2070, 2080, 2090, 2099]
+                  ).map((yr) => (
                     <option key={yr} value={yr}>
                       {yr}
+                      {dataMode !== 'historical' && yr <= 2024 ? ' (Obs)' : ''}
                     </option>
                   ))}
                 </select>

@@ -76,7 +76,10 @@ function medianSorted(arr: Float64Array, len: number): number {
   return 0.5 * (arr[mid - 1] + arr[mid]);
 }
 
-export function computeMannKendallAndTheilSen(values: number[]): TrendAnalysisResult {
+export function computeMannKendallAndTheilSen(
+  values: number[],
+  stepsPerDecade = 120
+): TrendAnalysisResult {
   const n = values.length;
   if (n < 4) {
     return {
@@ -138,13 +141,13 @@ export function computeMannKendallAndTheilSen(values: number[]): TrendAnalysisRe
   const conf = getConfidenceInfo(pValue);
 
   slopes.sort();
-  const slopePerMonth = medianSorted(slopes, pairCount);
-  const slopePerDecade = slopePerMonth * 120; // 12 months * 10 years
-  const delta20Yr = slopePerMonth * (n - 1);
+  const slopePerStep = medianSorted(slopes, pairCount);
+  const slopePerDecade = slopePerStep * stepsPerDecade;
+  const delta20Yr = slopePerStep * (n - 1);
 
   const residuals = new Float64Array(n);
   for (let i = 0; i < n; i++) {
-    residuals[i] = values[i] - slopePerMonth * i;
+    residuals[i] = values[i] - slopePerStep * i;
   }
   residuals.sort();
   const intercept = medianSorted(residuals, n);
@@ -157,7 +160,7 @@ export function computeMannKendallAndTheilSen(values: number[]): TrendAnalysisRe
     significant: conf.significant,
     confidenceTier: conf.tier,
     confidenceLabel: conf.label,
-    slopePerMonth,
+    slopePerMonth: slopePerStep,
     slopePerDecade,
     intercept,
     delta20Yr,

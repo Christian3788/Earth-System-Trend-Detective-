@@ -2,6 +2,51 @@ export type SphereId = 'atmosphere' | 'hydrosphere' | 'biosphere' | 'cryosphere'
 
 export type TeleconnectionId = 'iod' | 'enso' | 'arctic' | 'none';
 
+export type DataMode = 'historical' | 'rcp45' | 'rcp85';
+
+export interface DataModeSpec {
+  id: DataMode;
+  label: string;
+  shortLabel: string;
+  yearMin: number;
+  yearMax: number;
+  sourceLabel: string;
+  description: string;
+}
+
+export const DATA_MODE_META: Record<DataMode, DataModeSpec> = {
+  historical: {
+    id: 'historical',
+    label: 'Historical Observed (2005–2024)',
+    shortLabel: 'Historical',
+    yearMin: 2005,
+    yearMax: 2024,
+    sourceLabel: 'Observed Satellite Missions & MERRA-2 Assimilation',
+    description:
+      'Observed 20-year satellite and reanalysis record (2005–2024) capturing measured regional trends and teleconnection variability.',
+  },
+  rcp45: {
+    id: 'rcp45',
+    label: 'Projected · RCP 4.5 (2025–2099)',
+    shortLabel: 'RCP 4.5',
+    yearMin: 2025,
+    yearMax: 2099,
+    sourceLabel: 'CMIP5 / NASA NEX-GDDP Intermediate Stabilization (RCP 4.5)',
+    description:
+      'Intermediate emissions pathway peaking radiative forcing near 4.5 W/m² after mid-century, moderating late-century warming and cryosphere loss.',
+  },
+  rcp85: {
+    id: 'rcp85',
+    label: 'Projected · RCP 8.5 (2025–2099)',
+    shortLabel: 'RCP 8.5',
+    yearMin: 2025,
+    yearMax: 2099,
+    sourceLabel: 'CMIP5 / NASA NEX-GDDP High-Emissions Baseline (RCP 8.5)',
+    description:
+      'High-emissions pathway reaching 8.5 W/m² radiative forcing by 2100, driving accelerated Arctic amplification and intensified dipole extremes.',
+  },
+};
+
 export type DatasetId =
   | 'merra2_t2m'
   | 'gpm_precip'
@@ -666,3 +711,23 @@ export const MONTH_ABBR = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
 ];
+
+export function getEffectiveBounds(
+  dataset: DatasetSpec,
+  dataMode: DataMode
+): { min: number; mid: number; max: number } {
+  if (dataMode === 'historical') {
+    return { min: dataset.min, mid: dataset.mid, max: dataset.max };
+  }
+  const factor = dataMode === 'rcp45' ? 1.3 : 1.75;
+  // Cap sea ice concentration anomaly cleanly at [-85, 85]%
+  if (dataset.id === 'amsr2_ice') {
+    const bound = Math.min(85, Math.round(dataset.max * factor));
+    return { min: -bound, mid: 0, max: bound };
+  }
+  return {
+    min: Number((dataset.min * factor).toFixed(dataset.decimals)),
+    mid: 0,
+    max: Number((dataset.max * factor).toFixed(dataset.decimals)),
+  };
+}

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   DATASETS,
+  DATA_MODE_META,
+  DataMode,
   DatasetId,
   SphereId,
   TeleconnectionId,
@@ -23,6 +25,7 @@ export default function App() {
   const [sphere, setSphere] = useState<SphereId>('atmosphere');
   const [datasetId, setDatasetId] = useState<DatasetId>('merra2_t2m');
 
+  const [dataMode, setDataMode] = useState<DataMode>('historical');
   const [year, setYear] = useState<number>(2024);
   const [month, setMonth] = useState<number>(10);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -67,37 +70,59 @@ export default function App() {
     }
   };
 
+  const handleChangeDataMode = (nextMode: DataMode) => {
+    setIsPlaying(false);
+    setDataMode(nextMode);
+    if (nextMode === 'historical') {
+      if (year > 2024 || year < 2005) setYear(2024);
+      if (compareYear > 2024 || compareYear < 2005) setCompareYear(2005);
+    } else {
+      if (year <= 2024) setYear(2050);
+      if (compareYear < 2005) setCompareYear(2024);
+      else if (dataMode === 'historical') setCompareYear(2024);
+    }
+  };
+
   // Temporal playback timer
   useEffect(() => {
     if (!isPlaying) return;
+    const { yearMin, yearMax } = DATA_MODE_META[dataMode];
+    const step = dataMode === 'historical' ? 1 : 2;
     const timer = window.setInterval(() => {
-      setYear((prev) => (prev >= 2024 ? 2005 : prev + 1));
+      setYear((prev) => (prev + step > yearMax ? yearMin : prev + step));
     }, 650);
     return () => window.clearInterval(timer);
-  }, [isPlaying]);
+  }, [isPlaying, dataMode]);
 
   // Global 360x180 anomaly snapshot for active Year/Month
   const anomalyGrid = useMemo(
-    () => buildGlobalAnomalyGrid(dataset, teleconnectionId, year, month),
-    [dataset, teleconnectionId, year, month]
+    () => buildGlobalAnomalyGrid(dataset, teleconnectionId, year, month, dataMode),
+    [dataset, teleconnectionId, year, month, dataMode]
   );
 
   // Global 360x180 comparison snapshot for Compare To Year/Month
   const compareGrid = useMemo(
-    () => buildGlobalAnomalyGrid(dataset, teleconnectionId, compareYear, month),
-    [dataset, teleconnectionId, compareYear, month]
+    () =>
+      buildGlobalAnomalyGrid(
+        dataset,
+        teleconnectionId,
+        compareYear,
+        month,
+        compareYear <= 2024 ? 'historical' : dataMode
+      ),
+    [dataset, teleconnectionId, compareYear, month, dataMode]
   );
 
   // Global 120x60 Mann-Kendall significance mask (p < 0.05)
   const significanceMask = useMemo(
-    () => buildSignificanceMaskGrid(dataset, teleconnectionId),
-    [dataset, teleconnectionId]
+    () => buildSignificanceMaskGrid(dataset, teleconnectionId, dataMode),
+    [dataset, teleconnectionId, dataMode]
   );
 
-  // 20-year Driver/Regional Trend Detective statistical engine
+  // Driver/Regional Trend Detective statistical engine
   const driverSeries = useMemo(
-    () => generateDriverSummarySeries(dataset, teleconnectionId),
-    [dataset, teleconnectionId]
+    () => generateDriverSummarySeries(dataset, teleconnectionId, dataMode, false),
+    [dataset, teleconnectionId, dataMode]
   );
 
   const handleProbePoint = (lat: number, lon: number) => {
@@ -110,6 +135,8 @@ export default function App() {
       <HeaderBar
         teleconnection={teleconnectionId}
         onSelectTeleconnection={handleSelectTeleconnection}
+        dataMode={dataMode}
+        onChangeDataMode={handleChangeDataMode}
         onOpenResources={() => setResourcesOpen(true)}
       />
 
@@ -119,6 +146,7 @@ export default function App() {
           onSelectSphere={handleSelectSphere}
           dataset={dataset}
           onSelectDataset={handleSelectDataset}
+          dataMode={dataMode}
           year={year}
           onChangeYear={(y) => {
             setIsPlaying(false);
@@ -133,6 +161,7 @@ export default function App() {
         <MapViewport
           dataset={dataset}
           teleconnectionId={teleconnectionId}
+          dataMode={dataMode}
           year={year}
           month={month}
           viewMode={viewMode}
@@ -155,6 +184,7 @@ export default function App() {
           onChangeTab={setActiveTab}
           dataset={dataset}
           teleconnectionId={teleconnectionId}
+          dataMode={dataMode}
           year={year}
           month={month}
           driverSeries={driverSeries}

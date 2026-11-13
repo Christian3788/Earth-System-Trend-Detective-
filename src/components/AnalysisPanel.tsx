@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { Download, Crosshair, TrendingUp, BarChart3, CheckCircle2, AlertCircle } from 'lucide-react';
 import {
+  DATA_MODE_META,
+  DataMode,
   DatasetSpec,
   MONTH_ABBR,
   TELECONNECTIONS,
@@ -9,6 +11,7 @@ import {
 } from '../data/datasets';
 import { formatCoord, getRegionName } from '../data/worldCoastlines';
 import {
+  generateDriverSummarySeries,
   generateOpposingPoleSeries,
   generatePointTimeSeries,
   sampleAnomalyAt,
@@ -27,6 +30,7 @@ interface AnalysisPanelProps {
   onChangeTab: (t: AnalysisTab) => void;
   dataset: DatasetSpec;
   teleconnectionId: TeleconnectionId;
+  dataMode: DataMode;
   year: number;
   month: number;
   driverSeries: {
@@ -46,6 +50,7 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
   onChangeTab,
   dataset,
   teleconnectionId,
+  dataMode,
   year,
   month,
   driverSeries,
@@ -53,8 +58,12 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
   onSelectProbeCoord,
 }) => {
   const [plotTarget, setPlotTarget] = useState<PlotTarget>('driver');
+  const [includeFullHorizon, setIncludeFullHorizon] = useState<boolean>(false);
 
   const tele = TELECONNECTIONS[teleconnectionId];
+  const modeMeta = DATA_MODE_META[dataMode];
+  const useFullHorizon = dataMode !== 'historical' && includeFullHorizon;
+
   const effectivePoles = useMemo(
     () => getEffectivePoles(teleconnectionId, dataset),
     [teleconnectionId, dataset]
@@ -69,9 +78,11 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
       effectivePoles.poleA.lat,
       effectivePoles.poleA.lon,
       year,
-      month
+      month,
+      undefined,
+      dataMode
     );
-  }, [dataset, teleconnectionId, effectivePoles, year, month]);
+  }, [dataset, teleconnectionId, effectivePoles, year, month, dataMode]);
 
   const poleBVal = useMemo(() => {
     if (!effectivePoles.poleB) return null;
@@ -81,17 +92,36 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
       effectivePoles.poleB.lat,
       effectivePoles.poleB.lon,
       year,
-      month
+      month,
+      undefined,
+      dataMode
     );
-  }, [dataset, teleconnectionId, effectivePoles, year, month]);
+  }, [dataset, teleconnectionId, effectivePoles, year, month, dataMode]);
 
-  // Pole B 20-year statistical series
+  // Historical baseline driver series for Observed vs. Projected comparison
+  const historicalBaselineSeries = useMemo(() => {
+    if (dataMode === 'historical') return null;
+    return generateDriverSummarySeries(dataset, teleconnectionId, 'historical', false);
+  }, [dataset, teleconnectionId, dataMode]);
+
+  // Driver series (supports Full 2005-2099 continuity in Time Plot)
+  const plotDriverSeries = useMemo(() => {
+    if (!useFullHorizon) return driverSeries;
+    return generateDriverSummarySeries(dataset, teleconnectionId, dataMode, true);
+  }, [useFullHorizon, driverSeries, dataset, teleconnectionId, dataMode]);
+
+  // Pole B statistical series
   const poleBSeries = useMemo(
-    () => generateOpposingPoleSeries(dataset, teleconnectionId),
-    [dataset, teleconnectionId]
+    () => generateOpposingPoleSeries(dataset, teleconnectionId, dataMode, false),
+    [dataset, teleconnectionId, dataMode]
   );
 
-  // Probed point inspection & 20-year statistics
+  const plotPoleBSeries = useMemo(() => {
+    if (!useFullHorizon) return poleBSeries;
+    return generateOpposingPoleSeries(dataset, teleconnectionId, dataMode, true);
+  }, [useFullHorizon, poleBSeries, dataset, teleconnectionId, dataMode]);
+
+  // Probed point inspection & statistical series
   const probeAnalysis = useMemo(() => {
     if (!probedPoint) return null;
     const observed = sampleAnomalyAt(
@@ -100,12 +130,32 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
       probedPoint.lat,
       probedPoint.lon,
       year,
-      month
+      month,
+      undefined,
+      dataMode
     );
     const domainMasked = Number.isNaN(observed);
     const series = domainMasked
       ? null
-      : generatePointTimeSeries(dataset, teleconnectionId, probedPoint.lat, probedPoint.lon);
+      : generatePointTimeSeries(
+          dataset,
+          teleconnectionId,
+          probedPoint.lat,
+          probedPoint.lon,
+          dataMode,
+          useFullHorizon
+        );
+    const histSeries =
+      domainMasked || dataMode === 'historical'
+        ? null
+        : generatePointTimeSeries(
+            dataset,
+            teleconnectionId,
+            probedPoint.lat,
+            probedPoint.lon,
+            'historical',
+            false
+          );
 
     return {
       lat: probedPoint.lat,
@@ -114,8 +164,9 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
       observed,
       domainMasked,
       series,
+      histSeries,
     };
-  }, [probedPoint, dataset, teleconnectionId, year, month]);
+  }, [probedPoint, dataset, teleconnectionId, year, month, dataMode, useFullHorizon]);
 
   // Resolve active Time Plot series
   const activePlotData = useMemo(() => {
@@ -127,29 +178,29 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
         stats: probeAnalysis.series.stats,
       };
     }
-    if (plotTarget === 'poleB' && effectivePoles.poleB && poleBSeries) {
+    if (plotTarget === 'poleB' && effectivePoles.poleB && plotPoleBSeries) {
       return {
         label: effectivePoles.poleB.name,
-        points: poleBSeries.points,
+        points: plotPoleBSeries.points,
         comparePoints: null,
-        stats: poleBSeries.stats,
+        stats: plotPoleBSeries.stats,
       };
     }
-    if (plotTarget === 'both' && effectivePoles.poleA && effectivePoles.poleB && poleBSeries) {
+    if (plotTarget === 'both' && effectivePoles.poleA && effectivePoles.poleB && plotPoleBSeries) {
       return {
         label: `Opposing Poles: ${effectivePoles.poleA.regionLabel} vs. ${effectivePoles.poleB.regionLabel}`,
-        points: driverSeries.points,
-        comparePoints: poleBSeries.points,
-        stats: driverSeries.stats,
+        points: plotDriverSeries.points,
+        comparePoints: plotPoleBSeries.points,
+        stats: plotDriverSeries.stats,
       };
     }
     return {
       label: effectivePoles.poleA ? effectivePoles.poleA.name : 'Global Sampling Composite',
-      points: driverSeries.points,
+      points: plotDriverSeries.points,
       comparePoints: null,
-      stats: driverSeries.stats,
+      stats: plotDriverSeries.stats,
     };
-  }, [plotTarget, probeAnalysis, effectivePoles, poleBSeries, driverSeries]);
+  }, [plotTarget, probeAnalysis, effectivePoles, plotPoleBSeries, plotDriverSeries]);
 
   const formatSigned = (val: number, dec = dataset.decimals) => {
     const sign = val >= 0 ? '+' : '';
@@ -161,14 +212,26 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
 
   const handleExportCsv = () => {
     const { points, stats, label } = activePlotData;
+    const windowStr = useFullHorizon
+      ? '2005-2099'
+      : dataMode === 'historical'
+      ? '2005-2024'
+      : '2025-2099';
+    const deltaLabel = useFullHorizon
+      ? '95-Year Delta (2005-2099)'
+      : dataMode === 'historical'
+      ? '20-Year Delta (2005-2024)'
+      : '75-Year Projected Delta (2025-2099)';
+
     const headerLines = [
       `# NASA Earth System Data Explorer - Trend Detective Export`,
+      `# Data Mode: ${modeMeta.label}`,
       `# Dataset: ${dataset.name} (${dataset.sourceType}, ${dataset.mission})`,
       `# Teleconnection Driver: ${tele.label}`,
       `# Target Series: ${label}`,
       `# Unit: ${dataset.unit}`,
       `# Theil-Sen Slope: ${formatSigned(stats.slopePerDecade, dataset.decimals + 1)} ${dataset.unit}/decade`,
-      `# 20-Year Delta (2005-2024): ${formatSigned(stats.delta20Yr, dataset.decimals + 1)} ${dataset.unit}`,
+      `# ${deltaLabel}: ${formatSigned(stats.delta20Yr, dataset.decimals + 1)} ${dataset.unit}`,
       `# Mann-Kendall Z-Score: ${stats.zScore.toFixed(3)}`,
       `# Mann-Kendall p-Value: ${stats.pValue.toExponential(4)}`,
       `Date,Year,Month,Raw_Anomaly,LOESS_Smoothed,Theil_Sen_Trend,Unit`,
@@ -184,7 +247,7 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `nasa_esde_${dataset.id}_${teleconnectionId}_2005_2024.csv`;
+    a.download = `nasa_esde_${dataset.id}_${teleconnectionId}_${dataMode}_${windowStr.replace('-', '_')}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -192,6 +255,10 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
   };
 
   const { stats } = driverSeries;
+  const horizonSpanLabel = dataMode === 'historical' ? '2005–2024' : '2025–2099';
+  const horizonDeltaLabel =
+    dataMode === 'historical' ? '20-Year Total Delta' : '75-Year Projected Delta';
+  const horizonDeltaShort = dataMode === 'historical' ? '20-Yr Δ' : '75-Yr Δ';
 
   return (
     <aside
@@ -255,8 +322,10 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
         {activeTab === 'detective' && (
           <div className="space-y-3.5">
             <div className="flex items-center justify-between text-xs text-slate-500">
-              <span>Automated Trend Detective Report</span>
-              <span className="font-mono tabular-nums">N = {stats.n} mo</span>
+              <span>Trend Detective · {modeMeta.shortLabel}</span>
+              <span className="font-mono tabular-nums">
+                N = {stats.n} {dataMode === 'historical' ? 'mo' : 'qtr'}
+              </span>
             </div>
 
             {/* Q1: What is changing */}
@@ -266,14 +335,20 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
               </div>
               <div className="text-sm font-semibold text-slate-900">{dataset.name}</div>
               <div className="text-xs text-slate-600">
-                <span>{dataset.sourceType}</span>
+                <span>
+                  {dataMode === 'historical' ? dataset.sourceType : 'CMIP5 / NEX-GDDP Model'}
+                </span>
                 <span className="mx-1.5" aria-hidden="true">·</span>
                 <span>Unit: <span className="font-mono font-medium text-slate-800">{dataset.unit}</span></span>
                 <span className="mx-1.5" aria-hidden="true">·</span>
                 <span>Driver: <span className="font-medium text-slate-800">{tele.label}</span></span>
               </div>
               <p className="text-xs leading-relaxed text-slate-600 pt-1">
-                {tele.id === 'none' ? dataset.physicalSummary : tele.mechanism}
+                {dataMode === 'historical'
+                  ? tele.id === 'none'
+                    ? dataset.physicalSummary
+                    : tele.mechanism
+                  : modeMeta.description}
               </p>
             </div>
 
@@ -333,7 +408,7 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
             {/* Q3: How much */}
             <div className="p-3.5 rounded-lg border border-slate-200 bg-slate-50/60 space-y-2.5">
               <div className="text-[11px] font-semibold uppercase tracking-wider text-[#0B3D91]">
-                03. How Much (2005–2024)
+                03. How Much ({horizonSpanLabel})
               </div>
               {effectivePoles.poleA && effectivePoles.poleB && poleBSeries ? (
                 <div className="space-y-2">
@@ -366,7 +441,7 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
               ) : (
                 <div className="grid grid-cols-2 gap-2.5">
                   <div className="p-2.5 rounded border border-slate-200 bg-white">
-                    <div className="text-[11px] text-slate-500">20-Year Total Delta</div>
+                    <div className="text-[11px] text-slate-500">{horizonDeltaLabel}</div>
                     <div className="text-lg font-mono font-bold text-slate-900 tabular-nums mt-0.5">
                       {formatSigned(stats.delta20Yr, dataset.decimals)}
                       <span className="text-[11px] font-normal text-slate-500 ml-1">
@@ -381,6 +456,28 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                       <span className="text-[11px] font-normal text-slate-500 ml-1">
                         /dec
                       </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {historicalBaselineSeries && (
+                <div className="p-2.5 rounded border border-slate-200 bg-white space-y-1.5">
+                  <div className="text-[11px] font-semibold text-slate-700">
+                    Observed vs. Projected Trajectory Comparison
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="p-2 rounded bg-slate-50 border border-slate-200">
+                      <div className="text-slate-500">Observed (2005–2024)</div>
+                      <div className="font-mono font-semibold text-slate-900 tabular-nums mt-0.5">
+                        {formatSigned(historicalBaselineSeries.stats.slopePerDecade, dataset.decimals)} {dataset.unit}/dec
+                      </div>
+                    </div>
+                    <div className="p-2 rounded bg-blue-50/60 border border-blue-200">
+                      <div className="text-[#0B3D91] font-medium">{modeMeta.shortLabel} (2025–2099)</div>
+                      <div className="font-mono font-semibold text-slate-900 tabular-nums mt-0.5">
+                        {formatSigned(stats.slopePerDecade, dataset.decimals)} {dataset.unit}/dec
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -523,7 +620,9 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                     <>
                       <div className="grid grid-cols-2 gap-2.5">
                         <div className="p-3 rounded-lg border border-slate-200 bg-slate-50/70">
-                          <div className="text-[11px] text-slate-500">Observed Anomaly</div>
+                          <div className="text-[11px] text-slate-500">
+                            {dataMode === 'historical' ? 'Observed Anomaly' : `${modeMeta.shortLabel} Anomaly`}
+                          </div>
                           <div className="text-lg font-mono font-bold text-slate-900 tabular-nums mt-0.5">
                             {formatSigned(probeAnalysis.observed)}
                             <span className="text-[11px] font-normal text-slate-500 ml-1">
@@ -543,6 +642,25 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                           </div>
                         </div>
                       </div>
+
+                      {probeAnalysis.histSeries && (
+                        <div className="grid grid-cols-2 gap-2.5">
+                          <div className="p-2.5 rounded-lg border border-slate-200 bg-white">
+                            <div className="text-[11px] text-slate-500">Hist Slope (2005–2024)</div>
+                            <div className="text-sm font-mono font-semibold text-slate-900 tabular-nums mt-0.5">
+                              {formatSigned(probeAnalysis.histSeries.stats.slopePerDecade)} {dataset.unit}/dec
+                            </div>
+                          </div>
+                          <div className="p-2.5 rounded-lg border border-blue-200 bg-blue-50/50">
+                            <div className="text-[11px] text-[#0B3D91] font-medium">
+                              {modeMeta.shortLabel} (2025–2099)
+                            </div>
+                            <div className="text-sm font-mono font-semibold text-slate-900 tabular-nums mt-0.5">
+                              {formatSigned(probeAnalysis.series.stats.slopePerDecade)} {dataset.unit}/dec
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       <div className="p-3.5 rounded-lg border border-slate-200 bg-slate-50/70 space-y-2">
                         <div className="flex items-center justify-between">
@@ -570,7 +688,7 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                             p = {formatPValue(probeAnalysis.series.stats.pValue)}
                           </span>
                           <span>
-                            20-Yr Δ = {formatSigned(probeAnalysis.series.stats.delta20Yr)} {dataset.unit}
+                            {horizonDeltaShort} = {formatSigned(probeAnalysis.series.stats.delta20Yr)} {dataset.unit}
                           </span>
                         </div>
                       </div>
@@ -583,7 +701,7 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                         }}
                         className="w-full px-3 py-2 text-xs font-semibold rounded-md bg-[#0B3D91] text-white hover:bg-[#092E6E] transition-colors cursor-pointer"
                       >
-                        Plot 20-Year Time Series for This Point
+                        Plot {dataMode === 'historical' ? '20-Year' : modeMeta.shortLabel} Time Series for This Point
                       </button>
                     </>
                   )
@@ -605,7 +723,13 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                   {activePlotData.label}
                 </div>
                 <div className="text-[11px] text-slate-500">
-                  240 Monthly Observations (2005–2024) · {dataset.unit}
+                  {activePlotData.points.length}{' '}
+                  {dataMode === 'historical'
+                    ? 'Monthly Observations (2005–2024)'
+                    : useFullHorizon
+                    ? `Quarterly Obs + ${modeMeta.shortLabel} (2005–2099)`
+                    : `Quarterly ${modeMeta.shortLabel} Projections (2025–2099)`}{' '}
+                  · {dataset.unit}
                 </div>
               </div>
 
@@ -618,6 +742,37 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                 Export CSV
               </button>
             </div>
+
+            {dataMode !== 'historical' && (
+              <div
+                role="group"
+                aria-label="Time series horizon"
+                className="grid grid-cols-2 p-0.5 bg-slate-100 rounded-md border border-slate-200"
+              >
+                <button
+                  type="button"
+                  onClick={() => setIncludeFullHorizon(false)}
+                  className={`px-2 py-1 text-[11px] font-medium rounded transition-colors whitespace-nowrap cursor-pointer ${
+                    !includeFullHorizon
+                      ? 'bg-white text-[#0B3D91] shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Projected Only (2025–2099)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIncludeFullHorizon(true)}
+                  className={`px-2 py-1 text-[11px] font-medium rounded transition-colors whitespace-nowrap cursor-pointer ${
+                    includeFullHorizon
+                      ? 'bg-white text-[#0B3D91] shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Full Obs + Proj (2005–2099)
+                </button>
+              </div>
+            )}
 
             {/* Series Target Switcher */}
             <div className="flex flex-wrap items-center gap-1.5">

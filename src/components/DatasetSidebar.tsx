@@ -2,11 +2,14 @@ import React, { useMemo } from 'react';
 import { Play, Pause, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   DATASETS,
+  DATA_MODE_META,
+  DataMode,
   DatasetId,
   DatasetSpec,
   MONTH_NAMES,
   SPHERES,
   SphereId,
+  getEffectiveBounds,
 } from '../data/datasets';
 
 interface DatasetSidebarProps {
@@ -14,6 +17,7 @@ interface DatasetSidebarProps {
   onSelectSphere: (s: SphereId) => void;
   dataset: DatasetSpec;
   onSelectDataset: (id: DatasetId) => void;
+  dataMode: DataMode;
   year: number;
   onChangeYear: (y: number) => void;
   month: number;
@@ -27,6 +31,7 @@ export const DatasetSidebar: React.FC<DatasetSidebarProps> = ({
   onSelectSphere,
   dataset,
   onSelectDataset,
+  dataMode,
   year,
   onChangeYear,
   month,
@@ -34,6 +39,9 @@ export const DatasetSidebar: React.FC<DatasetSidebarProps> = ({
   isPlaying,
   onTogglePlay,
 }) => {
+  const modeMeta = DATA_MODE_META[dataMode];
+  const bounds = useMemo(() => getEffectiveBounds(dataset, dataMode), [dataset, dataMode]);
+  const midYear = Math.round((modeMeta.yearMin + modeMeta.yearMax) / 2);
   const sphereDatasets = useMemo(
     () => DATASETS.filter((d) => d.sphere === sphere),
     [sphere]
@@ -192,14 +200,14 @@ export const DatasetSidebar: React.FC<DatasetSidebarProps> = ({
         <div>
           <div className="flex items-center justify-between text-xs text-slate-700 mb-1.5">
             <label htmlFor="esde-year-slider" className="font-medium">
-              Observation Year
+              {dataMode === 'historical' ? 'Observation Year' : 'Projected Model Year'}
             </label>
             <div className="flex items-center gap-1">
               <button
                 type="button"
                 aria-label="Previous year"
-                disabled={year <= 2005}
-                onClick={() => onChangeYear(Math.max(2005, year - 1))}
+                disabled={year <= modeMeta.yearMin}
+                onClick={() => onChangeYear(Math.max(modeMeta.yearMin, year - 1))}
                 className="p-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40 cursor-pointer"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
@@ -210,8 +218,8 @@ export const DatasetSidebar: React.FC<DatasetSidebarProps> = ({
               <button
                 type="button"
                 aria-label="Next year"
-                disabled={year >= 2024}
-                onClick={() => onChangeYear(Math.min(2024, year + 1))}
+                disabled={year >= modeMeta.yearMax}
+                onClick={() => onChangeYear(Math.min(modeMeta.yearMax, year + 1))}
                 className="p-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40 cursor-pointer"
               >
                 <ChevronRight className="w-3.5 h-3.5" />
@@ -222,17 +230,17 @@ export const DatasetSidebar: React.FC<DatasetSidebarProps> = ({
           <input
             id="esde-year-slider"
             type="range"
-            min={2005}
-            max={2024}
+            min={modeMeta.yearMin}
+            max={modeMeta.yearMax}
             step={1}
             value={year}
             onChange={(e) => onChangeYear(Number(e.target.value))}
             className="w-full nasa-slider"
           />
           <div className="flex justify-between text-[11px] font-mono text-slate-400 mt-1 tabular-nums">
-            <span>2005</span>
-            <span>2015</span>
-            <span>2024</span>
+            <span>{modeMeta.yearMin}</span>
+            <span>{midYear}</span>
+            <span>{modeMeta.yearMax}</span>
           </div>
         </div>
 
@@ -303,12 +311,12 @@ export const DatasetSidebar: React.FC<DatasetSidebarProps> = ({
                 'linear-gradient(to right, rgb(23,55,130) 0%, rgb(37,99,235) 17%, rgb(96,165,250) 34%, rgb(248,250,252) 50%, rgb(251,191,36) 67%, rgb(239,68,68) 84%, rgb(153,27,27) 100%)',
             }}
             role="img"
-            aria-label={`Diverging color bar from ${formatBound(dataset.min)} to ${formatBound(dataset.max)} ${dataset.unit}`}
+            aria-label={`Diverging color bar from ${formatBound(bounds.min)} to ${formatBound(bounds.max)} ${dataset.unit}`}
           />
           <div className="flex justify-between text-[11px] font-mono text-slate-700 mt-1 tabular-nums">
-            <span>{formatBound(dataset.min)}</span>
-            <span>{dataset.mid.toFixed(dataset.decimals)}</span>
-            <span>{formatBound(dataset.max)}</span>
+            <span>{formatBound(bounds.min)}</span>
+            <span>{bounds.mid.toFixed(dataset.decimals)}</span>
+            <span>{formatBound(bounds.max)}</span>
           </div>
           <div className="flex justify-between text-[11px] text-slate-500 mt-0.5">
             <span>Negative Anomaly</span>
@@ -322,7 +330,7 @@ export const DatasetSidebar: React.FC<DatasetSidebarProps> = ({
             Data Provenance · {dataset.daacName}
           </div>
           <p className="text-[11px] leading-relaxed text-slate-500">
-            {dataset.citation}
+            {dataMode === 'historical' ? dataset.citation : `${modeMeta.sourceLabel} · ${dataset.citation}`}
           </p>
           <div className="text-[11px] text-slate-500 pt-0.5">
             Baseline: <span className="font-mono">{dataset.baselinePeriod}</span>

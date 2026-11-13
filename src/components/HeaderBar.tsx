@@ -1,10 +1,12 @@
 import React from 'react';
 import { BookOpen } from 'lucide-react';
-import { TELECONNECTIONS, TeleconnectionId } from '../data/datasets';
+import { DataMode, TELECONNECTIONS, TeleconnectionId } from '../data/datasets';
 
 interface HeaderBarProps {
   teleconnection: TeleconnectionId;
   onSelectTeleconnection: (id: TeleconnectionId) => void;
+  dataMode: DataMode;
+  onChangeDataMode: (mode: DataMode) => void;
   onOpenResources: () => void;
 }
 
@@ -13,14 +15,17 @@ const DRIVER_ORDER: TeleconnectionId[] = ['iod', 'enso', 'arctic', 'none'];
 export const HeaderBar: React.FC<HeaderBarProps> = ({
   teleconnection,
   onSelectTeleconnection,
+  dataMode,
+  onChangeDataMode,
   onOpenResources,
 }) => {
+  const isProjected = dataMode !== 'historical';
+
   return (
     <header className="shrink-0 bg-white border-b border-slate-200">
       {/* Primary Institutional NASA Navy Banner */}
       <div className="bg-[#0B3D91] text-white px-4 lg:px-6 h-12 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
-          {/* Crisp NASA-inspired orbital meatball vector mark */}
           <svg
             width="28"
             height="28"
@@ -52,7 +57,11 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
 
         <div className="flex items-center gap-4 shrink-0">
           <span className="hidden md:inline text-xs text-blue-100 whitespace-nowrap font-mono tabular-nums">
-            ESDE 2.0 · 2005–2024
+            {dataMode === 'historical'
+              ? 'ESDE 2.0 · Observed 2005–2024'
+              : dataMode === 'rcp45'
+              ? 'ESDE 2.0 · Projected RCP 4.5 (2025–2099)'
+              : 'ESDE 2.0 · Projected RCP 8.5 (2025–2099)'}
           </span>
           <button
             type="button"
@@ -65,7 +74,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
         </div>
       </div>
 
-      {/* Teleconnection Driver Preset Bar */}
+      {/* Teleconnection Driver & Data Mode Bar */}
       <div className="bg-slate-50 px-4 lg:px-6 py-2 border-t border-[#092E6E]/10 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-slate-600 whitespace-nowrap mr-1">
@@ -84,7 +93,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                   key={id}
                   type="button"
                   onClick={() => onSelectTeleconnection(id)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-md border transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0B3D91] ${
+                  className={`px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0B3D91] ${
                     active
                       ? 'bg-[#0B3D91] text-white border-[#0B3D91]'
                       : 'bg-white text-slate-700 border-slate-300 hover:border-[#0B3D91]/60 hover:text-[#0B3D91]'
@@ -97,15 +106,70 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           </div>
         </div>
 
-        <div className="hidden xl:flex items-center gap-4 text-xs text-slate-500 whitespace-nowrap shrink-0">
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block w-2.5 h-2.5 rounded-full border-2 border-[#06B6D4]" aria-hidden="true" />
-            Pole A Surplus
+        {/* Historical vs Projected (RCP 4.5 / 8.5) Data Mode Switch */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-slate-600 whitespace-nowrap">
+            Data Mode:
           </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block w-2.5 h-2.5 rounded-full border-2 border-[#DC2626]" aria-hidden="true" />
-            Pole B Deficit
-          </span>
+          <div
+            role="group"
+            aria-label="Climate data mode"
+            className="inline-flex items-center p-0.5 bg-slate-200/70 rounded-md border border-slate-300"
+          >
+            <button
+              type="button"
+              onClick={() => onChangeDataMode('historical')}
+              className={`px-2.5 py-1 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                !isProjected
+                  ? 'bg-white text-[#0B3D91] shadow-xs font-semibold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Historical (2005–2024)
+            </button>
+            <button
+              type="button"
+              onClick={() => onChangeDataMode(isProjected ? dataMode : 'rcp45')}
+              className={`px-2.5 py-1 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                isProjected
+                  ? 'bg-[#0B3D91] text-white shadow-xs font-semibold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Projected (2025–2099)
+            </button>
+          </div>
+
+          {isProjected && (
+            <div
+              role="group"
+              aria-label="Representative Concentration Pathway"
+              className="inline-flex items-center p-0.5 bg-white rounded-md border border-slate-300"
+            >
+              <button
+                type="button"
+                onClick={() => onChangeDataMode('rcp45')}
+                className={`px-2 py-1 text-xs font-mono font-medium rounded transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                  dataMode === 'rcp45'
+                    ? 'bg-amber-600 text-white font-semibold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                RCP 4.5
+              </button>
+              <button
+                type="button"
+                onClick={() => onChangeDataMode('rcp85')}
+                className={`px-2 py-1 text-xs font-mono font-medium rounded transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                  dataMode === 'rcp85'
+                    ? 'bg-red-700 text-white font-semibold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                RCP 8.5
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </header>
