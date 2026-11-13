@@ -1,0 +1,6 @@
+{
+  "name": "NASA Earth System Data Explorer — Trend Detective",
+  "description": "Interactive Earth system anomaly explorer and automated Mann-Kendall / Theil-Sen Trend Detective statistical analysis suite.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
