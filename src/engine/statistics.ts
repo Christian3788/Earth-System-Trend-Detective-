@@ -306,3 +306,296 @@ export function valueToDivergingRGB(normalized: number): [number, number, number
     Math.round(c0[2] + (c1[2] - c0[2]) * frac),
   ];
 }
+
+export interface PettittResult {
+  index: number;
+  year: number;
+  month: number;
+  dateLabel: string;
+  uStatistic: number;
+  pValue: number;
+  significant: boolean;
+  shiftMagnitude: number;
+}
+
+// Non-parametric Pettitt test for single regime/change-point detection in time series
+export function computePettittChangePoint(points: TimeSeriesPoint[]): PettittResult | null {
+  const n = points.length;
+  if (n < 12) return null;
+
+  let maxAbsU = -1;
+  let bestT = 0;
+
+  // Compute U_t incrementally in O(n^2) cleanly for n <= 400
+  for (let t = 1; t < n - 1; t++) {
+    let u = 0;
+    for (let i = 0; i <= t; i++) {
+      const xi = points[i].raw;
+      for (let j = t + 1; j < n; j++) {
+        const d = xi - points[j].raw;
+        if (d > 1e-12) u += 1;
+        else if (d < -1e-12) u -= 1;
+      }
+    }
+    const absU = Math.abs(u);
+    if (absU > maxAbsU) {
+      maxAbsU = absU;
+      bestT = t;
+    }
+  }
+
+  // Approximate two-sided p-value: p ≈ 2 * exp((-6 * K^2) / (n^3 + n^2))
+  const n3n2 = n * n * n + n * n;
+  const pValue = Math.min(1, Math.max(0, 2 * Math.exp((-6 * maxAbsU * maxAbsU) / n3n2)));
+
+  let preSum = 0;
+  for (let i = 0; i <= bestT; i++) preSum += points[i].raw;
+  let postSum = 0;
+  for (let i = bestT + 1; i < n; i++) postSum += points[i].raw;
+  const preMean = preSum / (bestT + 1);
+  const postMean = postSum / (n - bestT - 1);
+
+  const pt = points[bestT];
+  return {
+    index: bestT,
+    year: pt.year,
+    month: pt.month,
+    dateLabel: pt.dateLabel,
+    uStatistic: maxAbsU,
+    pValue,
+    significant: pValue < 0.05,
+    shiftMagnitude: postMean - preMean,
+  };
+}
+
+export interface CrossCorrelationResult {
+  r: number;
+  rSquared: number;
+  pValue: number;
+  nOverlap: number;
+  lagSteps: number;
+  optimalLagSteps: number;
+  optimalR: number;
+}
+
+function pearsonAtLag(a: number[], b: number[], lag: number): { r: number; n: number } {
+  // lag > 0 means Series A leads Series B by `lag` steps (compare A[t] with B[t + lag])
+  const pairsA: number[] = [];
+  const pairsB: number[] = [];
+  for (let i = 0; i < a.length; i++) {
+    const j = i + lag;
+    if (j >= 0 && j < b.length) {
+      pairsA.push(a[i]);
+      pairsB.push(b[j]);
+    }
+  }
+  const n = pairsA.length;
+  if (n < 4) return { r: 0, n };
+  let sumA = 0;
+  let sumB = 0;
+  for (let i = 0; i < n; i++) {
+    sumA += pairsA[i];
+    sumB += pairsB[i];
+  }
+  const meanA = sumA / n;
+  const meanB = sumB / n;
+  let num = 0;
+  let denA = 0;
+  let denB = 0;
+  for (let i = 0; i < n; i++) {
+    const da = pairsA[i] - meanA;
+    const db = pairsB[i] - meanB;
+    num += da * db;
+    denA += da * da;
+    denB += db * db;
+  }
+  const denom = Math.sqrt(denA * denB);
+  return { r: denom > 1e-12 ? Math.max(-1, Math.min(1, num / denom)) : 0, n };
+}
+
+export function computeCrossCorrelation(
+  seriesA: TimeSeriesPoint[],
+  seriesB: TimeSeriesPoint[],
+  lagSteps = 0,
+  maxSearchLag = 6
+): CrossCorrelationResult {
+  const valsA = seriesA.map((p) => p.raw);
+  const valsB = seriesB.map((p) => p.raw);
+
+  const { r, n } = pearsonAtLag(valsA, valsB, lagSteps);
+  // Fisher z transformation for significance p-value
+  const clampedR = Math.max(-0.999, Math.min(0.999, r));
+  const fisherZ =
+    n > 4 ? 0.5 * Math.log((1 + clampedR) / (1 - clampedR)) * Math.sqrt(n - 3) : 0;
+  const pValue = normalTwoTailedPValue(fisherZ);
+
+  let optimalLagSteps = 0;
+  let optimalR = 0;
+  for (let l = -maxSearchLag; l <= maxSearchLag; l++) {
+    const res = pearsonAtLag(valsA, valsB, l);
+    if (Math.abs(res.r) > Math.abs(optimalR)) {
+      optimalR = res.r;
+      optimalLagSteps = l;
+    }
+  }
+
+  return {
+    r,
+    rSquared: r * r,
+    pValue,
+    nOverlap: n,
+    lagSteps,
+    optimalLagSteps,
+    optimalR,
+  };
+}
+
+export interface SeasonalTrendStat {
+  season: 'DJF' | 'MAM' | 'JJA' | 'SON';
+  label: string;
+  slopePerDecade: number;
+  pValue: number;
+  significant: boolean;
+}
+
+export function computeSeasonalBreakdown(
+  points: TimeSeriesPoint[]
+): SeasonalTrendStat[] {
+  const defs: { season: 'DJF' | 'MAM' | 'JJA' | 'SON'; label: string; months: number[] }[] = [
+    { season: 'DJF', label: 'Winter (DJF)', months: [12, 1, 2] },
+    { season: 'MAM', label: 'Spring (MAM)', months: [3, 4, 5] },
+    { season: 'JJA', label: 'Summer (JJA)', months: [6, 7, 8] },
+    { season: 'SON', label: 'Autumn (SON)', months: [9, 10, 11] },
+  ];
+
+  return defs.map((d) => {
+    const byYear = new Map<number, number[]>();
+    for (const pt of points) {
+      if (!d.months.includes(pt.month)) continue;
+      // Group Dec with following year for boreal DJF continuity
+      const seasonYear = pt.month === 12 ? pt.year + 1 : pt.year;
+      const arr = byYear.get(seasonYear) ?? [];
+      arr.push(pt.raw);
+      byYear.set(seasonYear, arr);
+    }
+    const years = Array.from(byYear.keys()).sort((a, b) => a - b);
+    const vals = years.map((yr) => {
+      const arr = byYear.get(yr)!;
+      return arr.reduce((s, v) => s + v, 0) / arr.length;
+    });
+    const res = computeMannKendallAndTheilSen(vals, 10);
+    return {
+      season: d.season,
+      label: d.label,
+      slopePerDecade: res.slopePerDecade,
+      pValue: res.pValue,
+      significant: res.significant,
+    };
+  });
+}
+
+export interface ParsedExternalCsv {
+  title: string;
+  unit: string;
+  points: TimeSeriesPoint[];
+  stats: TrendAnalysisResult;
+  pettitt: PettittResult | null;
+}
+
+export function parseUserCsvTimeSeries(
+  csvText: string,
+  fileName = 'Uploaded CSV'
+): ParsedExternalCsv {
+  const rawLines = csvText
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0 && !l.startsWith('#'));
+
+  if (rawLines.length < 5) {
+    throw new Error('CSV must contain at least 5 data rows (Date, Value).');
+  }
+
+  const parsedRows: { year: number; month: number; dateLabel: string; val: number }[] = [];
+  let detectedUnit = 'units';
+
+  for (let idx = 0; idx < rawLines.length; idx++) {
+    const cols = rawLines[idx].split(/[,;\t]+/).map((c) => c.trim().replace(/^"|"$/g, ''));
+    if (cols.length < 2) continue;
+
+    // Skip header row if value column is non-numeric
+    const candidateVal = Number(cols[cols.length >= 4 && !Number.isNaN(Number(cols[3])) ? 3 : 1]);
+    if (idx === 0 && Number.isNaN(candidateVal)) {
+      if (cols[2] && /unit|°|mm|cm|mg|%/i.test(cols[2])) {
+        detectedUnit = cols[2];
+      }
+      continue;
+    }
+
+    // Try finding numeric value column (supports Date,Val or Date,Year,Month,Raw_Anomaly export format)
+    let val = Number(cols[1]);
+    if (Number.isNaN(val) && cols.length >= 4) {
+      val = Number(cols[3]);
+    }
+    if (Number.isNaN(val)) continue;
+
+    // Parse date from cols[0] (YYYY-MM, YYYY-MM-DD, YYYY/MM, or YYYY)
+    const dateStr = cols[0];
+    let year = 2005 + Math.floor(parsedRows.length / 12);
+    let month = (parsedRows.length % 12) + 1;
+
+    const ymMatch = dateStr.match(/^(\d{4})[-/](\d{1,2})/);
+    const yOnlyMatch = dateStr.match(/^(\d{4})$/);
+    if (ymMatch) {
+      year = Number(ymMatch[1]);
+      month = Math.max(1, Math.min(12, Number(ymMatch[2])));
+    } else if (yOnlyMatch) {
+      year = Number(yOnlyMatch[1]);
+      month = 1;
+    }
+
+    parsedRows.push({
+      year,
+      month,
+      dateLabel: `${year}-${String(month).padStart(2, '0')}`,
+      val,
+    });
+  }
+
+  if (parsedRows.length < 5) {
+    throw new Error(
+      'Could not parse at least 5 numeric rows. Expected columns like "YYYY-MM, value".'
+    );
+  }
+
+  // Estimate steps per decade based on distinct years vs row count
+  const spanYears = Math.max(
+    1,
+    parsedRows[parsedRows.length - 1].year - parsedRows[0].year
+  );
+  const stepsPerYear = parsedRows.length / spanYears;
+  const stepsPerDecade = Math.max(10, Math.round(stepsPerYear * 10));
+
+  const rawValues = parsedRows.map((r) => r.val);
+  const stats = computeMannKendallAndTheilSen(rawValues, stepsPerDecade);
+  const loessValues = computeLoess(rawValues, 0.16);
+
+  const points: TimeSeriesPoint[] = parsedRows.map((r, i) => ({
+    index: i,
+    year: r.year,
+    month: r.month,
+    dateLabel: r.dateLabel,
+    raw: r.val,
+    loess: loessValues[i],
+    theilSen: stats.intercept + stats.slopePerMonth * i,
+  }));
+
+  const pettitt = computePettittChangePoint(points);
+  return {
+    title: fileName.replace(/\.(csv|txt)$/i, ''),
+    unit: detectedUnit,
+    points,
+    stats,
+    pettitt,
+  };
+}
+

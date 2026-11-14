@@ -731,3 +731,285 @@ export function getEffectiveBounds(
     max: Number((dataset.max * factor).toFixed(dataset.decimals)),
   };
 }
+
+export interface BoundingBoxROI {
+  id?: string;
+  label: string;
+  minLat: number;
+  maxLat: number;
+  minLon: number;
+  maxLon: number;
+  note?: string;
+}
+
+export const SENTINEL_REGIONS: BoundingBoxROI[] = [
+  {
+    id: 'horn_africa_iod',
+    label: 'Horn of Africa & W. Indian Ocean',
+    minLat: -6,
+    maxLat: 14,
+    minLon: 34,
+    maxLon: 64,
+    note: 'Positive IOD surplus rainfall, SST warming, and Somali upwelling corridor.',
+  },
+  {
+    id: 'east_australia',
+    label: 'Eastern Australia & Maritime Margin',
+    minLat: -36,
+    maxLat: -10,
+    minLon: 112,
+    maxLon: 152,
+    note: 'Opposing IOD/El Niño drying deficit, soil moisture loss, and bushfire stress.',
+  },
+  {
+    id: 'canada_rcm_boreal',
+    label: 'Canadian Boreal & Hudson Basin (CSA)',
+    minLat: 50,
+    maxLat: 70,
+    minLon: -135,
+    maxLon: -72,
+    note: 'CSA RADARSAT RCM wetland/permafrost SAR backscatter and boreal greening zone.',
+  },
+  {
+    id: 'barents_arctic',
+    label: 'Barents–Kara Arctic Corridor',
+    minLat: 68,
+    maxLat: 82,
+    minLon: 18,
+    maxLon: 72,
+    note: 'Fastest global Arctic Amplification warming and AMSR2 sea-ice retreat core.',
+  },
+  {
+    id: 'amazon_basin',
+    label: 'Amazon River Basin',
+    minLat: -14,
+    maxLat: 4,
+    minLon: -74,
+    maxLon: -48,
+    note: 'ENSO-driven terrestrial drought stress, NDVI decline, and coastal river plume.',
+  },
+  {
+    id: 'nino34_belt',
+    label: 'Equatorial Pacific Niño 3.4 Belt',
+    minLat: -5,
+    maxLat: 5,
+    minLon: -170,
+    maxLon: -120,
+    note: 'Core ENSO thermal oscillation driving planetary precipitation teleconnections.',
+  },
+];
+
+export interface CaseFileStep {
+  title: string;
+  question: string;
+  explanation: string;
+  datasetId: DatasetId;
+  teleconnectionId: TeleconnectionId;
+  dataMode: DataMode;
+  year: number;
+  month: number;
+  viewMode: '2d' | '3d';
+  probeLat?: number;
+  probeLon?: number;
+  roi?: BoundingBoxROI;
+  compareYear?: number;
+  maskNoise?: boolean;
+  targetTab?: 'detective' | 'identify' | 'timeplot';
+}
+
+export interface CaseFileSpec {
+  id: string;
+  badge: string;
+  title: string;
+  subtitle: string;
+  partners: string;
+  steps: CaseFileStep[];
+}
+
+export const CASE_FILES: CaseFileSpec[] = [
+  {
+    id: 'case_iod_split',
+    badge: 'CASE 01 · TELECONNECTION DIPOLE',
+    title: 'One Ocean Driver, Two Opposite Extremes (IOD)',
+    subtitle: 'Track how the 2019–2023 Indian Ocean Dipole simultaneously drove Horn of Africa floods and Australian droughts.',
+    partners: 'NASA GPM · MUR SST · SMAP · KNMI Climate Explorer',
+    steps: [
+      {
+        title: '1. Oceanic Thermal Trigger (2019)',
+        question: 'What is driving the cross-basin split?',
+        explanation:
+          'Inspect Sea Surface Temperature anomalies during the historic Oct 2019 Positive IOD peak: warm western Indian Ocean waters (+Pole A) contrast sharply against cool waters off Sumatra/Java (-Pole B).',
+        datasetId: 'mur_sst',
+        teleconnectionId: 'iod',
+        dataMode: 'historical',
+        year: 2019,
+        month: 10,
+        viewMode: '3d',
+        probeLat: 4.5,
+        probeLon: 54.0,
+        targetTab: 'detective',
+      },
+      {
+        title: '2. Opposing Continental Rainfall',
+        question: 'Where do opposing land trends emerge?',
+        explanation:
+          'Switch to GPM IMERG Precipitation over the Horn of Africa ROI and use the 2D curtain comparison (2019 vs 2005) to see wet anomalies over East Africa while Eastern Australia faces severe deficit.',
+        datasetId: 'gpm_precip',
+        teleconnectionId: 'iod',
+        dataMode: 'historical',
+        year: 2019,
+        month: 10,
+        viewMode: '2d',
+        compareYear: 2005,
+        roi: SENTINEL_REGIONS[0],
+        targetTab: 'identify',
+      },
+      {
+        title: '3. Statistical Significance Verdict',
+        question: 'Are these changes statistically significant?',
+        explanation:
+          'Enable Mann-Kendall noise masking (p < 0.05) and inspect the 20-year Time Plot. Both the Theil-Sen slope and Pettitt change-point distinguish persistent warming/drying from synoptic noise.',
+        datasetId: 'smap_soil',
+        teleconnectionId: 'iod',
+        dataMode: 'historical',
+        year: 2023,
+        month: 10,
+        viewMode: '2d',
+        maskNoise: true,
+        roi: SENTINEL_REGIONS[1],
+        targetTab: 'timeplot',
+      },
+    ],
+  },
+  {
+    id: 'case_arctic_rcm',
+    badge: 'CASE 02 · CRYOSPHERE & CSA SAR',
+    title: 'Arctic Amplification & Boreal Permafrost Thaw',
+    subtitle: 'Combine AMSR2 sea-ice concentration, MERRA-2 surface air warming, and CSA RADARSAT RCM C-band backscatter.',
+    partners: 'NASA EOSDIS · CSA RADARSAT RCM · GEO.ca · NSIDC',
+    steps: [
+      {
+        title: '1. Polar Heat Amplification',
+        question: 'How fast is the Arctic warming relative to mid-latitudes?',
+        explanation:
+          'Focus on the Barents-Kara Arctic Corridor under MERRA-2 Surface Air Temperature. Compare 2024 vs 2005 to see polar amplification outpacing lower latitudes.',
+        datasetId: 'merra2_t2m',
+        teleconnectionId: 'arctic',
+        dataMode: 'historical',
+        year: 2024,
+        month: 1,
+        viewMode: '3d',
+        roi: SENTINEL_REGIONS[3],
+        targetTab: 'detective',
+      },
+      {
+        title: '2. Multi-Decade Sea-Ice Retreat',
+        question: 'How much ice has disappeared in the Barents-Kara core?',
+        explanation:
+          'AMSR2 Sea Ice Concentration reveals a steep, statistically significant negative Theil-Sen slope in the Arctic while Antarctic sectors show regional contrast.',
+        datasetId: 'amsr2_ice',
+        teleconnectionId: 'arctic',
+        dataMode: 'historical',
+        year: 2024,
+        month: 9,
+        viewMode: '2d',
+        maskNoise: true,
+        probeLat: 76.0,
+        probeLon: 46.0,
+        targetTab: 'timeplot',
+      },
+      {
+        title: '3. Canadian Boreal SAR Monitoring (CSA RCM)',
+        question: 'How does radar detect all-weather boreal wetland change?',
+        explanation:
+          'CSA RADARSAT Constellation Mission (RCM) tracks C-band SAR backscatter across Hudson Bay & Mackenzie Delta wetlands regardless of cloud cover or polar night.',
+        datasetId: 'rcm_sar',
+        teleconnectionId: 'arctic',
+        dataMode: 'historical',
+        year: 2024,
+        month: 7,
+        viewMode: '2d',
+        roi: SENTINEL_REGIONS[2],
+        targetTab: 'identify',
+      },
+    ],
+  },
+  {
+    id: 'case_swot_hydrology',
+    badge: 'CASE 03 · SURFACE WATER & MASS',
+    title: 'SWOT & GRACE Continental Water Redistribution',
+    subtitle: 'Investigate rising equatorial lakes vs. depleting aquifers and inland seas across Earth’s hydrosphere.',
+    partners: 'NASA/CNES/CSA SWOT · GRACE-FO · Hydrology Time Series',
+    steps: [
+      {
+        title: '1. SWOT Surface Water Elevation',
+        question: 'Which basins are gaining or losing surface water height?',
+        explanation:
+          'SWOT Ka-band radar interferometry reveals opposing water elevation trajectories—rising levels in East African Rift lakes alongside sharp drawdowns in the Aral Sea & Colorado Basin.',
+        datasetId: 'swot_water',
+        teleconnectionId: 'none',
+        dataMode: 'historical',
+        year: 2024,
+        month: 6,
+        viewMode: '3d',
+        probeLat: 1.0,
+        probeLon: 33.0,
+        targetTab: 'identify',
+      },
+      {
+        title: '2. GRACE-FO Total Water & Ice Mass',
+        question: 'Is subterranean and cryospheric mass loss significant?',
+        explanation:
+          'GRACE gravimetry captures significant mass loss across Greenland, West Antarctica, and NW India groundwater basins—verified at p < 0.001 confidence.',
+        datasetId: 'grace_mass',
+        teleconnectionId: 'none',
+        dataMode: 'historical',
+        year: 2024,
+        month: 8,
+        viewMode: '2d',
+        maskNoise: true,
+        probeLat: 29.0,
+        probeLon: 76.0,
+        targetTab: 'detective',
+      },
+    ],
+  },
+  {
+    id: 'case_rcp_projection',
+    badge: 'CASE 04 · OBSERVED VS. PROJECTED',
+    title: '2005–2024 Observations vs. CMIP5 RCP 8.5 Trajectory',
+    subtitle: 'Compare measured satellite anomalies with late-century radiative forcing pathways and change-point acceleration.',
+    partners: 'NASA NEX-GDDP · MERRA-2 · KNMI Climate Explorer',
+    steps: [
+      {
+        title: '1. Intermediate Stabilization (RCP 4.5)',
+        question: 'What happens if radiative forcing peaks near 4.5 W/m²?',
+        explanation:
+          'Switch to Projected RCP 4.5 (2050–2099) to compare historical decadal warming rates against a mid-century stabilization trajectory.',
+        datasetId: 'merra2_t2m',
+        teleconnectionId: 'enso',
+        dataMode: 'rcp45',
+        year: 2075,
+        month: 7,
+        viewMode: '2d',
+        compareYear: 2024,
+        targetTab: 'detective',
+      },
+      {
+        title: '2. High-Emissions Acceleration (RCP 8.5)',
+        question: 'How sharply does the Theil-Sen slope steepen through 2099?',
+        explanation:
+          'Under RCP 8.5, projected anomalies intensify across equatorial Pacific ENSO belts and high-latitude landmasses—inspect the full 2005–2099 continuity plot.',
+        datasetId: 'merra2_t2m',
+        teleconnectionId: 'enso',
+        dataMode: 'rcp85',
+        year: 2090,
+        month: 10,
+        viewMode: '3d',
+        roi: SENTINEL_REGIONS[5],
+        targetTab: 'timeplot',
+      },
+    ],
+  },
+];
+

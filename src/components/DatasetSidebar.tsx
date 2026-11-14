@@ -75,15 +75,15 @@ export const DatasetSidebar: React.FC<DatasetSidebarProps> = ({
   return (
     <aside
       aria-label="Dataset hierarchy and legend"
-      className="w-full lg:w-80 xl:w-[336px] shrink-0 bg-white border-b lg:border-b-0 lg:border-r border-slate-200 flex flex-col lg:overflow-y-auto"
+      className="w-full lg:w-[336px] xl:w-[356px] shrink-0 bg-white border-b lg:border-b-0 lg:border-r border-slate-200 flex flex-col lg:overflow-y-auto"
     >
       {/* Section 1: Sphere Selector */}
       <div className="p-4 border-b border-slate-200">
         <div className="flex items-center justify-between mb-2.5">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">
             1. Earth System Sphere
           </h2>
-          <span className="text-xs text-slate-400">ESDE Hierarchy</span>
+          <span className="text-xs font-medium text-slate-600">ESDE Hierarchy</span>
         </div>
         <div className="grid grid-cols-2 gap-1.5" role="tablist" aria-label="Earth System Spheres">
           {SPHERES.map((s) => {
@@ -95,10 +95,10 @@ export const DatasetSidebar: React.FC<DatasetSidebarProps> = ({
                 role="tab"
                 aria-selected={active}
                 onClick={() => onSelectSphere(s.id)}
-                className={`px-3 py-2 text-xs font-medium rounded-md border text-left transition-colors whitespace-nowrap cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#0B3D91] ${
+                className={`px-3 py-2 text-[13px] font-semibold rounded-md border text-left transition-colors whitespace-nowrap cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#0B3D91] ${
                   active
                     ? 'bg-[#0B3D91] text-white border-[#0B3D91]'
-                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:text-slate-900'
+                    : 'bg-slate-50 text-slate-800 border-slate-300 hover:bg-slate-100 hover:text-slate-950'
                 }`}
               >
                 {s.label}
@@ -110,14 +110,14 @@ export const DatasetSidebar: React.FC<DatasetSidebarProps> = ({
 
       {/* Section 2: Dynamic Category & Mission Dataset */}
       <div className="p-4 border-b border-slate-200 space-y-3.5">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">
           2. Category &amp; Mission Dataset
         </h2>
 
         <div>
           <label
             htmlFor="esde-category-select"
-            className="block text-xs font-medium text-slate-700 mb-1"
+            className="block text-[13px] font-semibold text-slate-800 mb-1"
           >
             Observable Category
           </label>
@@ -125,7 +125,7 @@ export const DatasetSidebar: React.FC<DatasetSidebarProps> = ({
             id="esde-category-select"
             value={activeCategory}
             onChange={(e) => handleCategoryChange(e.target.value)}
-            className="w-full px-2.5 py-2 text-xs font-medium text-slate-900 bg-white border border-slate-300 rounded-md focus:outline-none focus:border-[#0B3D91] cursor-pointer"
+            className="w-full px-2.5 py-2 text-[13px] font-semibold text-slate-950 bg-white border border-slate-300 rounded-md focus:outline-none focus:border-[#0B3D91] cursor-pointer"
           >
             {categories.map((cat) => (
               <option key={cat} value={cat}>
@@ -138,7 +138,7 @@ export const DatasetSidebar: React.FC<DatasetSidebarProps> = ({
         <div>
           <label
             htmlFor="esde-dataset-select"
-            className="block text-xs font-medium text-slate-700 mb-1"
+            className="block text-[13px] font-semibold text-slate-800 mb-1"
           >
             Mission Product
           </label>
@@ -146,7 +146,7 @@ export const DatasetSidebar: React.FC<DatasetSidebarProps> = ({
             id="esde-dataset-select"
             value={dataset.id}
             onChange={(e) => onSelectDataset(e.target.value as DatasetId)}
-            className="w-full px-2.5 py-2 text-xs font-medium text-slate-900 bg-white border border-slate-300 rounded-md focus:outline-none focus:border-[#0B3D91] cursor-pointer"
+            className="w-full px-2.5 py-2 text-[13px] font-semibold text-slate-950 bg-white border border-slate-300 rounded-md focus:outline-none focus:border-[#0B3D91] cursor-pointer"
           >
             {categoryDatasets.map((d) => (
               <option key={d.id} value={d.id}>
@@ -158,10 +158,10 @@ export const DatasetSidebar: React.FC<DatasetSidebarProps> = ({
 
         {/* Quick Switch List of all datasets within active sphere */}
         <div className="pt-1">
-          <div className="text-[11px] font-medium text-slate-500 mb-1.5">
+          <div className="text-xs font-semibold text-slate-700 mb-1.5">
             Available in {SPHERES.find((s) => s.id === sphere)?.label}
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             {sphereDatasets.map((d) => {
               const selected = d.id === dataset.id;
               return (
@@ -169,14 +169,14 @@ export const DatasetSidebar: React.FC<DatasetSidebarProps> = ({
                   key={d.id}
                   type="button"
                   onClick={() => onSelectDataset(d.id)}
-                  className={`w-full text-left px-2.5 py-2 rounded-md border text-xs transition-colors cursor-pointer ${
+                  className={`w-full text-left px-3 py-2 rounded-md border text-[13px] transition-colors cursor-pointer ${
                     selected
-                      ? 'bg-[#0B3D91]/6 border-[#0B3D91] text-[#0B3D91] font-semibold'
-                      : 'bg-slate-50/70 border-slate-200 text-slate-700 hover:bg-slate-100'
+                      ? 'bg-[#0B3D91]/8 border-[#0B3D91] text-[#0B3D91] font-bold'
+                      : 'bg-slate-50 border-slate-200 text-slate-900 font-medium hover:bg-slate-100'
                   }`}
                 >
                   <div className="truncate">{d.name}</div>
-                  <div className="text-[11px] font-normal text-slate-500 mt-0.5 truncate">
+                  <div className="text-xs font-medium text-slate-700 mt-0.5 truncate">
                     {d.sourceType} · {d.mission} · {d.unit}
                   </div>
                 </button>
@@ -189,17 +189,17 @@ export const DatasetSidebar: React.FC<DatasetSidebarProps> = ({
       {/* Section 3: Temporal Range Controls */}
       <div className="p-4 border-b border-slate-200 space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">
             3. Temporal Selection
           </h2>
-          <span className="text-xs font-mono font-semibold text-[#0B3D91] tabular-nums">
+          <span className="text-[13px] font-mono font-bold text-[#0B3D91] tabular-nums">
             {year}-{String(month).padStart(2, '0')}
           </span>
         </div>
 
         <div>
-          <div className="flex items-center justify-between text-xs text-slate-700 mb-1.5">
-            <label htmlFor="esde-year-slider" className="font-medium">
+          <div className="flex items-center justify-between text-[13px] text-slate-800 mb-1.5">
+            <label htmlFor="esde-year-slider" className="font-semibold">
               {dataMode === 'historical' ? 'Observation Year' : 'Projected Model Year'}
             </label>
             <div className="flex items-center gap-1">
@@ -208,11 +208,11 @@ export const DatasetSidebar: React.FC<DatasetSidebarProps> = ({
                 aria-label="Previous year"
                 disabled={year <= modeMeta.yearMin}
                 onClick={() => onChangeYear(Math.max(modeMeta.yearMin, year - 1))}
-                className="p-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40 cursor-pointer"
+                className="p-1 rounded border border-slate-300 text-slate-800 hover:bg-slate-100 disabled:opacity-40 cursor-pointer"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
               </button>
-              <span className="font-mono font-semibold text-slate-900 px-1.5 tabular-nums">
+              <span className="font-mono font-bold text-sm text-slate-950 px-1.5 tabular-nums">
                 {year}
               </span>
               <button
@@ -220,7 +220,7 @@ export const DatasetSidebar: React.FC<DatasetSidebarProps> = ({
                 aria-label="Next year"
                 disabled={year >= modeMeta.yearMax}
                 onClick={() => onChangeYear(Math.min(modeMeta.yearMax, year + 1))}
-                className="p-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40 cursor-pointer"
+                className="p-1 rounded border border-slate-300 text-slate-800 hover:bg-slate-100 disabled:opacity-40 cursor-pointer"
               >
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
@@ -237,7 +237,7 @@ export const DatasetSidebar: React.FC<DatasetSidebarProps> = ({
             onChange={(e) => onChangeYear(Number(e.target.value))}
             className="w-full nasa-slider"
           />
-          <div className="flex justify-between text-[11px] font-mono text-slate-400 mt-1 tabular-nums">
+          <div className="flex justify-between text-xs font-mono font-semibold text-slate-700 mt-1 tabular-nums">
             <span>{modeMeta.yearMin}</span>
             <span>{midYear}</span>
             <span>{modeMeta.yearMax}</span>
@@ -248,7 +248,7 @@ export const DatasetSidebar: React.FC<DatasetSidebarProps> = ({
           <div className="flex-1">
             <label
               htmlFor="esde-month-select"
-              className="block text-xs font-medium text-slate-700 mb-1"
+              className="block text-[13px] font-semibold text-slate-800 mb-1"
             >
               Month
             </label>
@@ -256,7 +256,7 @@ export const DatasetSidebar: React.FC<DatasetSidebarProps> = ({
               id="esde-month-select"
               value={month}
               onChange={(e) => onChangeMonth(Number(e.target.value))}
-              className="w-full px-2.5 py-2 text-xs font-medium text-slate-900 bg-white border border-slate-300 rounded-md focus:outline-none focus:border-[#0B3D91] cursor-pointer"
+              className="w-full px-2.5 py-2 text-[13px] font-semibold text-slate-950 bg-white border border-slate-300 rounded-md focus:outline-none focus:border-[#0B3D91] cursor-pointer"
             >
               {MONTH_NAMES.map((mName, idx) => (
                 <option key={mName} value={idx + 1}>
@@ -268,10 +268,10 @@ export const DatasetSidebar: React.FC<DatasetSidebarProps> = ({
           <button
             type="button"
             onClick={onTogglePlay}
-            className={`px-3 py-2 text-xs font-medium rounded-md border flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+            className={`px-3.5 py-2 text-[13px] font-semibold rounded-md border flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
               isPlaying
                 ? 'bg-[#0B3D91] text-white border-[#0B3D91]'
-                : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
+                : 'bg-slate-50 text-slate-900 border-slate-300 hover:bg-slate-100'
             }`}
           >
             {isPlaying ? (
@@ -290,18 +290,18 @@ export const DatasetSidebar: React.FC<DatasetSidebarProps> = ({
       </div>
 
       {/* Section 4: Scientific Legend & Provenance */}
-      <div className="p-4 space-y-3 mt-auto bg-slate-50/60">
+      <div className="p-4 space-y-3 mt-auto bg-slate-50/80">
         <div className="flex items-center justify-between">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">
             4. Calibrated Legend
           </h2>
-          <span className="text-xs font-mono font-semibold text-slate-700">
+          <span className="text-xs font-mono font-bold text-slate-900">
             Unit: {dataset.unit}
           </span>
         </div>
 
         <div>
-          <div className="text-xs font-medium text-slate-800 mb-1.5">
+          <div className="text-[13px] font-semibold text-slate-950 mb-1.5">
             {dataset.shortName}
           </div>
           <div
@@ -313,12 +313,12 @@ export const DatasetSidebar: React.FC<DatasetSidebarProps> = ({
             role="img"
             aria-label={`Diverging color bar from ${formatBound(bounds.min)} to ${formatBound(bounds.max)} ${dataset.unit}`}
           />
-          <div className="flex justify-between text-[11px] font-mono text-slate-700 mt-1 tabular-nums">
+          <div className="flex justify-between text-xs font-mono font-bold text-slate-900 mt-1 tabular-nums">
             <span>{formatBound(bounds.min)}</span>
             <span>{bounds.mid.toFixed(dataset.decimals)}</span>
             <span>{formatBound(bounds.max)}</span>
           </div>
-          <div className="flex justify-between text-[11px] text-slate-500 mt-0.5">
+          <div className="flex justify-between text-xs font-medium text-slate-700 mt-0.5">
             <span>Negative Anomaly</span>
             <span>Neutral</span>
             <span>Positive Anomaly</span>
@@ -326,17 +326,17 @@ export const DatasetSidebar: React.FC<DatasetSidebarProps> = ({
         </div>
 
         <div className="pt-2.5 border-t border-slate-200 space-y-1">
-          <div className="text-[11px] font-semibold text-slate-700">
+          <div className="text-xs font-bold text-slate-900">
             Data Provenance · {dataset.daacName}
           </div>
-          <p className="text-[11px] leading-relaxed text-slate-500">
+          <p className="text-xs leading-relaxed text-slate-700">
             {dataMode === 'historical' ? dataset.citation : `${modeMeta.sourceLabel} · ${dataset.citation}`}
           </p>
-          <div className="text-[11px] text-slate-500 pt-0.5">
-            Baseline: <span className="font-mono">{dataset.baselinePeriod}</span>
+          <div className="text-xs text-slate-700 pt-0.5">
+            Baseline: <span className="font-mono font-semibold text-slate-900">{dataset.baselinePeriod}</span>
           </div>
-          <div className="text-[11px] text-slate-500">
-            Archives &amp; Tools: <span className="text-slate-700 font-medium">{dataset.portalHint}</span>
+          <div className="text-xs text-slate-700">
+            Archives &amp; Tools: <span className="text-slate-900 font-semibold">{dataset.portalHint}</span>
           </div>
         </div>
       </div>

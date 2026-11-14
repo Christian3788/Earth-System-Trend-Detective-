@@ -1,4 +1,5 @@
 import {
+  BoundingBoxROI,
   DATASETS,
   DataMode,
   DatasetId,
@@ -516,3 +517,157 @@ export function buildSignificanceMaskGrid(
 export function getDatasetById(id: DatasetId): DatasetSpec {
   return DATASETS.find((d) => d.id === id) ?? DATASETS[0];
 }
+
+export interface RegionSeriesResult {
+  points: TimeSeriesPoint[];
+  stats: TrendAnalysisResult;
+  centerLat: number;
+  centerLon: number;
+  validSamples: number;
+  totalSamples: number;
+  spatialStdDev: number;
+  domainMasked: boolean;
+}
+
+export function generateRegionAreaWeightedSeries(
+  dataset: DatasetSpec,
+  teleconnectionId: TeleconnectionId,
+  roi: BoundingBoxROI,
+  dataMode: DataMode = 'historical',
+  includeFullHorizon = false,
+  activeYear = 2024,
+  activeMonth = 10
+): RegionSeriesResult {
+  const minLat = Math.max(-88, Math.min(roi.minLat, roi.maxLat));
+  const maxLat = Math.min(88, Math.max(roi.minLat, roi.maxLat));
+  const minLon = Math.max(-180, Math.min(roi.minLon, roi.maxLon));
+  const maxLon = Math.min(180, Math.max(roi.minLon, roi.maxLon));
+
+  const latSteps = 6;
+  const lonSteps = 8;
+  const sampleCoords: { lat: number; lon: number; weight: number }[] = [];
+
+  for (let i = 0; i < latSteps; i++) {
+    const fLat = i / (latSteps - 1);
+    const lat = minLat + (maxLat - minLat) * fLat;
+    const weight = Math.max(0.05, Math.cos(lat * DEG2RAD));
+    for (let j = 0; j < lonSteps; j++) {
+      const fLon = j / (lonSteps - 1);
+      const lon = minLon + (maxLon - minLon) * fLon;
+      sampleCoords.push({ lat, lon, weight });
+    }
+  }
+
+  const landMask = getLandMaskBuffer();
+  const validCoords = sampleCoords.filter((c) => {
+    const gx = Math.min(359, Math.max(0, Math.floor(c.lon + 179.5 + 0.5)));
+    const gy = Math.min(179, Math.max(0, Math.floor(89.5 - c.lat + 0.5)));
+    const onLand = landMask[gy * 360 + gx] === 1;
+    if (dataset.domain === 'land' && !onLand) return false;
+    if (dataset.domain === 'ocean' && onLand) return false;
+    return true;
+  });
+
+  const centerLat = (minLat + maxLat) * 0.5;
+  const centerLon = (minLon + maxLon) * 0.5;
+
+  if (validCoords.length === 0) {
+    const emptyStats = computeMannKendallAndTheilSen([], 120);
+    return {
+      points: [],
+      stats: emptyStats,
+      centerLat,
+      centerLon,
+      validSamples: 0,
+      totalSamples: sampleCoords.length,
+      spatialStdDev: 0,
+      domainMasked: true,
+    };
+  }
+
+  const isMonthly = dataMode === 'historical' && !includeFullHorizon;
+  const startYear = includeFullHorizon || dataMode === 'historical' ? 2005 : 2025;
+  const endYear = dataMode === 'historical' && !includeFullHorizon ? 2024 : 2099;
+  const months = isMonthly ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] : [1, 4, 7, 10];
+  const stepsPerDecade = isMonthly ? 120 : 40;
+
+  const rawValues: number[] = [];
+  const meta: { year: number; month: number; dateLabel: string }[] = [];
+
+  for (let yr = startYear; yr <= endYear; yr++) {
+    for (const mo of months) {
+      let wSum = 0;
+      let valSum = 0;
+      for (const pt of validCoords) {
+        const v = sampleAnomalyAt(
+          dataset,
+          teleconnectionId,
+          pt.lat,
+          pt.lon,
+          yr,
+          mo,
+          undefined,
+          dataMode
+        );
+        if (!Number.isNaN(v)) {
+          valSum += v * pt.weight;
+          wSum += pt.weight;
+        }
+      }
+      rawValues.push(wSum > 0 ? valSum / wSum : 0);
+      meta.push({
+        year: yr,
+        month: mo,
+        dateLabel: `${yr}-${String(mo).padStart(2, '0')}`,
+      });
+    }
+  }
+
+  // Compute spatial standard deviation at activeYear/activeMonth
+  let activeVals: number[] = [];
+  for (const pt of validCoords) {
+    const v = sampleAnomalyAt(
+      dataset,
+      teleconnectionId,
+      pt.lat,
+      pt.lon,
+      activeYear,
+      activeMonth,
+      undefined,
+      dataMode
+    );
+    if (!Number.isNaN(v)) activeVals.push(v);
+  }
+  const activeMean =
+    activeVals.length > 0 ? activeVals.reduce((s, v) => s + v, 0) / activeVals.length : 0;
+  const spatialVar =
+    activeVals.length > 1
+      ? activeVals.reduce((s, v) => s + (v - activeMean) * (v - activeMean), 0) /
+        (activeVals.length - 1)
+      : 0;
+
+  const stats = computeMannKendallAndTheilSen(rawValues, stepsPerDecade);
+  const loessValues = computeLoess(rawValues, isMonthly ? 0.14 : 0.12);
+
+  const points: TimeSeriesPoint[] = rawValues.map((raw, i) => ({
+    index: i,
+    year: meta[i].year,
+    month: meta[i].month,
+    dateLabel: meta[i].dateLabel,
+    raw,
+    loess: loessValues[i],
+    theilSen: stats.intercept + stats.slopePerMonth * i,
+  }));
+
+  return {
+    points,
+    stats,
+    centerLat,
+    centerLon,
+    validSamples: validCoords.length,
+    totalSamples: sampleCoords.length,
+    spatialStdDev: Math.sqrt(spatialVar),
+    domainMasked: false,
+  };
+}
+

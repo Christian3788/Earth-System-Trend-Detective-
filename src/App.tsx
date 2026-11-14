@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  BoundingBoxROI,
+  CaseFileSpec,
   DATASETS,
   DATA_MODE_META,
   DataMode,
@@ -19,6 +21,7 @@ import { DatasetSidebar } from './components/DatasetSidebar';
 import { MapViewport, ViewMode } from './components/MapViewport';
 import { AnalysisPanel, AnalysisTab } from './components/AnalysisPanel';
 import { ResourcesModal } from './components/ResourcesModal';
+import { CaseFilesModal } from './components/CaseFilesModal';
 
 export default function App() {
   const [teleconnectionId, setTeleconnectionId] = useState<TeleconnectionId>('iod');
@@ -37,6 +40,12 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState<AnalysisTab>('detective');
   const [resourcesOpen, setResourcesOpen] = useState<boolean>(false);
+  const [caseFilesOpen, setCaseFilesOpen] = useState<boolean>(false);
+  const [activeRoi, setActiveRoi] = useState<BoundingBoxROI | null>(null);
+  const [activeCase, setActiveCase] = useState<{
+    spec: CaseFileSpec;
+    stepIndex: number;
+  } | null>(null);
   const [probedPoint, setProbedPoint] = useState<{ lat: number; lon: number } | null>({
     lat: 4.5,
     lon: 54.0,
@@ -130,6 +139,40 @@ export default function App() {
     setActiveTab('identify');
   };
 
+  const applyCaseStep = (spec: CaseFileSpec, stepIndex: number) => {
+    const step = spec.steps[stepIndex];
+    if (!step) return;
+    setIsPlaying(false);
+    const ds = getDatasetById(step.datasetId);
+    setSphere(ds.sphere);
+    setDatasetId(ds.id);
+    setTeleconnectionId(step.teleconnectionId);
+    setDataMode(step.dataMode);
+    setYear(step.year);
+    setMonth(step.month);
+    setViewMode(step.viewMode);
+    setMaskNoise(Boolean(step.maskNoise));
+    if (step.compareYear !== undefined) {
+      setCompareEnabled(true);
+      setCompareYear(step.compareYear);
+    }
+    setActiveRoi(step.roi ?? null);
+    if (step.probeLat !== undefined && step.probeLon !== undefined) {
+      setProbedPoint({ lat: step.probeLat, lon: step.probeLon });
+    }
+    if (step.targetTab) {
+      setActiveTab(step.targetTab);
+    }
+    setActiveCase({ spec, stepIndex });
+  };
+
+  const handleSelectRoiWithSwitch = (roi: BoundingBoxROI | null) => {
+    setActiveRoi(roi);
+    if (roi) {
+      setActiveTab('identify');
+    }
+  };
+
   return (
     <div className="min-h-screen lg:h-screen flex flex-col bg-white text-slate-900 lg:overflow-hidden">
       <HeaderBar
@@ -139,6 +182,8 @@ export default function App() {
         onChangeDataMode={handleChangeDataMode}
         onOpenResources={() => setResourcesOpen(true)}
         onOpenChat={() => setActiveTab('chat')}
+        onOpenCaseFiles={() => setCaseFilesOpen(true)}
+        activeCaseActive={Boolean(activeCase)}
       />
 
       <main className="flex-1 min-h-0 flex flex-col lg:flex-row">
@@ -178,6 +223,13 @@ export default function App() {
           onChangeCompareYear={setCompareYear}
           probedPoint={probedPoint}
           onProbePoint={handleProbePoint}
+          activeRoi={activeRoi}
+          onSelectRoi={handleSelectRoiWithSwitch}
+          activeCase={activeCase}
+          onCaseStepChange={(nextIdx) => {
+            if (activeCase) applyCaseStep(activeCase.spec, nextIdx);
+          }}
+          onCloseCase={() => setActiveCase(null)}
         />
 
         <AnalysisPanel
@@ -191,6 +243,8 @@ export default function App() {
           driverSeries={driverSeries}
           probedPoint={probedPoint}
           onSelectProbeCoord={(lat, lon) => setProbedPoint({ lat, lon })}
+          activeRoi={activeRoi}
+          onSelectRoi={handleSelectRoiWithSwitch}
         />
       </main>
 
@@ -198,6 +252,13 @@ export default function App() {
         open={resourcesOpen}
         onClose={() => setResourcesOpen(false)}
         onLoadDataset={handleSelectDataset}
+      />
+
+      <CaseFilesModal
+        open={caseFilesOpen}
+        onClose={() => setCaseFilesOpen(false)}
+        onLaunchCase={(cf) => applyCaseStep(cf, 0)}
+        activeCaseId={activeCase?.spec.id ?? null}
       />
     </div>
   );

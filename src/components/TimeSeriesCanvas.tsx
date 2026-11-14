@@ -1,21 +1,34 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { DatasetSpec } from '../data/datasets';
-import { TimeSeriesPoint } from '../engine/statistics';
+import { PettittResult, TimeSeriesPoint } from '../engine/statistics';
+
+export interface SecondaryOverlaySpec {
+  points: TimeSeriesPoint[];
+  label: string;
+  unit: string;
+  lagSteps: number;
+}
 
 interface TimeSeriesCanvasProps {
   points: TimeSeriesPoint[];
   comparePoints?: TimeSeriesPoint[] | null;
+  secondaryOverlay?: SecondaryOverlaySpec | null;
+  pettittMarker?: PettittResult | null;
   dataset: DatasetSpec;
   activeYear: number;
   activeMonth: number;
+  unitOverride?: string;
 }
 
 export const TimeSeriesCanvas: React.FC<TimeSeriesCanvasProps> = ({
   points,
   comparePoints,
+  secondaryOverlay,
+  pettittMarker,
   dataset,
   activeYear,
   activeMonth,
+  unitOverride,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -93,7 +106,7 @@ export const TimeSeriesCanvas: React.FC<TimeSeriesCanvasProps> = ({
       ctx.fillStyle = '#F8FAFC';
       ctx.fillRect(padL, padT, plotW, plotH);
 
-      ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+      ctx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, monospace';
       ctx.textAlign = 'right';
       for (let i = 0; i <= 4; i++) {
         const val = yMin + ((yMax - yMin) * i) / 4;
@@ -105,8 +118,8 @@ export const TimeSeriesCanvas: React.FC<TimeSeriesCanvasProps> = ({
         ctx.lineTo(padL + plotW, py);
         ctx.stroke();
 
-        ctx.fillStyle = '#64748B';
-        ctx.fillText(val.toFixed(dataset.decimals), padL - 6, py + 3);
+        ctx.fillStyle = '#334155';
+        ctx.fillText(val.toFixed(dataset.decimals), padL - 6, py + 4);
       }
 
       if (0 > yMin && 0 < yMax) {
@@ -142,8 +155,8 @@ export const TimeSeriesCanvas: React.FC<TimeSeriesCanvasProps> = ({
         ctx.lineTo(px, padT + plotH);
         ctx.stroke();
 
-        ctx.fillStyle = '#64748B';
-        ctx.fillText(String(yr), px, padT + plotH + 15);
+        ctx.fillStyle = '#334155';
+        ctx.fillText(String(yr), px, padT + plotH + 16);
       }
 
       // Regime boundary marker when viewing full 2005-2099 trajectory
@@ -152,7 +165,7 @@ export const TimeSeriesCanvas: React.FC<TimeSeriesCanvasProps> = ({
         if (boundaryIdx > 0) {
           const bx = xFor(boundaryIdx - 0.5);
           ctx.save();
-          ctx.strokeStyle = '#64748B';
+          ctx.strokeStyle = '#475569';
           ctx.lineWidth = 1;
           ctx.setLineDash([3, 3]);
           ctx.beginPath();
@@ -160,14 +173,40 @@ export const TimeSeriesCanvas: React.FC<TimeSeriesCanvasProps> = ({
           ctx.lineTo(bx, padT + plotH);
           ctx.stroke();
           ctx.setLineDash([]);
-          ctx.fillStyle = '#475569';
-          ctx.font = '600 9px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+          ctx.fillStyle = '#1E293B';
+          ctx.font = '700 10.5px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
           ctx.textAlign = 'left';
-          ctx.fillText('Proj →', bx + 4, padT + 11);
+          ctx.fillText('Proj →', bx + 4, padT + 12);
           ctx.textAlign = 'right';
-          ctx.fillText('← Obs', bx - 4, padT + 11);
+          ctx.fillText('← Obs', bx - 4, padT + 12);
           ctx.restore();
         }
+      }
+
+      // Pettitt change-point regime shift marker
+      if (pettittMarker && pettittMarker.significant && pettittMarker.index > 1 && pettittMarker.index < points.length - 1) {
+        const pxShift = xFor(pettittMarker.index);
+        ctx.save();
+        ctx.strokeStyle = '#7C3AED';
+        ctx.lineWidth = 1.6;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.moveTo(pxShift, padT);
+        ctx.lineTo(pxShift, padT + plotH);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        const tag = `Shift ${pettittMarker.dateLabel}`;
+        ctx.font = '700 10px ui-monospace, SFMono-Regular, Menlo, monospace';
+        const tw = ctx.measureText(tag).width + 8;
+        const alignRight = pxShift + tw + 6 > padL + plotW;
+        const rx = alignRight ? pxShift - tw - 3 : pxShift + 3;
+        ctx.fillStyle = 'rgba(124, 58, 237, 0.92)';
+        ctx.fillRect(rx, padT + 2, tw, 15);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.textAlign = 'left';
+        ctx.fillText(tag, rx + 4, padT + 13);
+        ctx.restore();
       }
 
       const actX = xFor(activeIdx);
@@ -256,6 +295,42 @@ export const TimeSeriesCanvas: React.FC<TimeSeriesCanvasProps> = ({
       ctx.stroke();
       ctx.setLineDash([]);
 
+      // Secondary Cross-Sphere Correlated Variable (z-score mapped onto primary plot range)
+      if (secondaryOverlay && secondaryOverlay.points.length === points.length && !comparePoints) {
+        const secVals = secondaryOverlay.points.map((p) => p.loess);
+        const secMean = secVals.reduce((s, v) => s + v, 0) / secVals.length;
+        const secStd = Math.max(
+          1e-6,
+          Math.sqrt(secVals.reduce((s, v) => s + (v - secMean) * (v - secMean), 0) / secVals.length)
+        );
+        const priVals = points.map((p) => p.loess);
+        const priMean = priVals.reduce((s, v) => s + v, 0) / priVals.length;
+        const priStd = Math.max(
+          1e-6,
+          Math.sqrt(priVals.reduce((s, v) => s + (v - priMean) * (v - priMean), 0) / priVals.length)
+        );
+
+        ctx.strokeStyle = '#0D9488';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        let started = false;
+        for (let i = 0; i < points.length; i++) {
+          const srcIdx = i + secondaryOverlay.lagSteps;
+          if (srcIdx < 0 || srcIdx >= secondaryOverlay.points.length) continue;
+          const zVal = (secondaryOverlay.points[srcIdx].loess - secMean) / secStd;
+          const mappedY = priMean + zVal * priStd;
+          const px = xFor(i);
+          const py = yFor(mappedY);
+          if (!started) {
+            ctx.moveTo(px, py);
+            started = true;
+          } else {
+            ctx.lineTo(px, py);
+          }
+        }
+        ctx.stroke();
+      }
+
       ctx.fillStyle = comparePoints ? '#0891B2' : '#0B3D91';
       ctx.beginPath();
       ctx.arc(actX, yFor(points[activeIdx].loess), 3.5, 0, Math.PI * 2);
@@ -304,7 +379,7 @@ export const TimeSeriesCanvas: React.FC<TimeSeriesCanvasProps> = ({
     const ro = new ResizeObserver(draw);
     ro.observe(container);
     return () => ro.disconnect();
-  }, [points, comparePoints, dataset, activeIdx, hoverIdx]);
+  }, [points, comparePoints, secondaryOverlay, pettittMarker, dataset, activeIdx, hoverIdx]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -338,22 +413,22 @@ export const TimeSeriesCanvas: React.FC<TimeSeriesCanvasProps> = ({
       </div>
 
       {inspectPt && (
-        <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-[11px] font-mono tabular-nums text-slate-700">
-          <span className="font-semibold text-slate-900">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-2 bg-slate-50 border border-slate-200 rounded text-xs font-mono tabular-nums text-slate-800">
+          <span className="font-bold text-slate-950">
             {hoverIdx !== null ? 'Inspect:' : 'Selected:'} {inspectPt.dateLabel}
           </span>
           {inspectCompare ? (
             <div className="flex items-center gap-3">
               <span>
                 Pole A:{' '}
-                <strong className="text-cyan-700">
+                <strong className="text-cyan-800">
                   {inspectPt.loess >= 0 ? '+' : ''}
                   {inspectPt.loess.toFixed(dataset.decimals)}
                 </strong>
               </span>
               <span>
                 Pole B:{' '}
-                <strong className="text-orange-700">
+                <strong className="text-orange-800">
                   {inspectCompare.loess >= 0 ? '+' : ''}
                   {inspectCompare.loess.toFixed(dataset.decimals)}
                 </strong>
@@ -363,7 +438,7 @@ export const TimeSeriesCanvas: React.FC<TimeSeriesCanvasProps> = ({
             <div className="flex items-center gap-3">
               <span>
                 Raw:{' '}
-                <strong className="text-slate-900">
+                <strong className="text-slate-950">
                   {inspectPt.raw >= 0 ? '+' : ''}
                   {inspectPt.raw.toFixed(dataset.decimals)}
                 </strong>
@@ -388,7 +463,7 @@ export const TimeSeriesCanvas: React.FC<TimeSeriesCanvasProps> = ({
       )}
 
       {comparePoints ? (
-        <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-600 px-0.5">
+        <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-slate-800 px-0.5">
           <span className="inline-flex items-center gap-1.5">
             <span className="w-3.5 h-0.5 bg-[#0891B2] inline-block" aria-hidden="true" />
             Pole A LOESS (Surplus)
@@ -398,24 +473,36 @@ export const TimeSeriesCanvas: React.FC<TimeSeriesCanvasProps> = ({
             Pole B LOESS (Deficit)
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="w-3.5 h-0.5 border-t-2 border-dashed border-slate-600 inline-block" aria-hidden="true" />
+            <span className="w-3.5 h-0.5 border-t-2 border-dashed border-slate-700 inline-block" aria-hidden="true" />
             Theil-Sen Slopes
           </span>
         </div>
       ) : (
-        <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-600 px-0.5">
+        <div className="flex flex-wrap items-center gap-3.5 text-xs font-medium text-slate-800 px-0.5">
           <span className="inline-flex items-center gap-1.5">
-            <span className="w-3.5 h-0.5 bg-slate-400 inline-block" aria-hidden="true" />
+            <span className="w-3.5 h-0.5 bg-slate-500 inline-block" aria-hidden="true" />
             {points[points.length - 1]?.year > 2024 ? 'Raw Samples' : 'Raw Monthly'}
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span className="w-3.5 h-0.5 bg-[#0B3D91] inline-block" aria-hidden="true" />
-            LOESS Smooth
+            LOESS ({unitOverride ?? dataset.unit})
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span className="w-3.5 h-0.5 border-t-2 border-dashed border-[#DC2626] inline-block" aria-hidden="true" />
             Theil-Sen Slope
           </span>
+          {secondaryOverlay && (
+            <span className="inline-flex items-center gap-1.5 font-semibold text-teal-800">
+              <span className="w-3.5 h-0.5 bg-[#0D9488] inline-block" aria-hidden="true" />
+              {secondaryOverlay.label} (z-scaled)
+            </span>
+          )}
+          {pettittMarker?.significant && (
+            <span className="inline-flex items-center gap-1.5 font-semibold text-violet-800">
+              <span className="w-3.5 h-0.5 border-t-2 border-dashed border-[#7C3AED] inline-block" aria-hidden="true" />
+              Regime Shift ({pettittMarker.dateLabel})
+            </span>
+          )}
         </div>
       )}
     </div>

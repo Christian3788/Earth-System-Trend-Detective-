@@ -42,6 +42,10 @@ interface ChatbotPanelProps {
   } | null;
   pendingPrompt?: string | null;
   onClearPendingPrompt?: () => void;
+  pettittSummary?: string;
+  roiSummary?: string;
+  correlationSummary?: string;
+  customCsvSummary?: string;
 }
 
 type ChatModelMode = 'general' | 'fast';
@@ -51,7 +55,7 @@ function renderInlineFormatting(text: string): React.ReactNode[] {
   return parts.map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
       return (
-        <strong key={i} className="font-semibold text-slate-900">
+        <strong key={i} className="font-bold text-slate-950">
           {part.slice(2, -2)}
         </strong>
       );
@@ -60,7 +64,7 @@ function renderInlineFormatting(text: string): React.ReactNode[] {
       return (
         <code
           key={i}
-          className="px-1 py-0.5 rounded bg-slate-200/70 text-[#0B3D91] font-mono text-[11px]"
+          className="px-1 py-0.5 rounded bg-slate-200/80 text-[#0B3D91] font-mono font-semibold text-xs"
         >
           {part.slice(1, -1)}
         </code>
@@ -73,7 +77,7 @@ function renderInlineFormatting(text: string): React.ReactNode[] {
 function FormattedMessage({ text }: { text: string }) {
   const lines = text.split('\n');
   return (
-    <div className="space-y-1.5 text-xs leading-relaxed text-slate-700">
+    <div className="space-y-1.5 text-[13px] leading-relaxed text-slate-800">
       {lines.map((rawLine, idx) => {
         const line = rawLine.trimEnd();
         if (!line.trim()) {
@@ -94,7 +98,7 @@ function FormattedMessage({ text }: { text: string }) {
         if (numMatch) {
           return (
             <div key={idx} className="flex items-start gap-1.5 pl-0.5">
-              <span className="font-mono font-semibold text-[#0B3D91] shrink-0">
+              <span className="font-mono font-bold text-[#0B3D91] shrink-0">
                 {numMatch[1]}
               </span>
               <span>{renderInlineFormatting(numMatch[2])}</span>
@@ -123,6 +127,10 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({
   probedInfo,
   pendingPrompt,
   onClearPendingPrompt,
+  pettittSummary,
+  roiSummary,
+  correlationSummary,
+  customCsvSummary,
 }) => {
   const [input, setInput] = useState('');
   const [modelMode, setModelMode] = useState<ChatModelMode>('general');
@@ -189,6 +197,10 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({
       poleBSummary,
       historicalSlopeComparison,
       probedSummary,
+      pettittSummary,
+      roiSummary,
+      correlationSummary,
+      customCsvSummary,
     };
   }, [
     dataMode,
@@ -204,6 +216,10 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({
     driverStats,
     historicalSlope,
     probedInfo,
+    pettittSummary,
+    roiSummary,
+    correlationSummary,
+    customCsvSummary,
   ]);
 
   useEffect(() => {
@@ -364,7 +380,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 min-w-0">
             <Bot className="w-4 h-4 text-[#0B3D91] shrink-0" />
-            <span className="text-xs font-semibold text-slate-900 truncate">
+            <span className="text-[13px] font-bold text-slate-950 truncate">
               NASA Trend Detective Scientist
             </span>
           </div>
@@ -376,7 +392,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({
                 setErrorMsg(null);
                 onChangeMessages([]);
               }}
-              className="px-2 py-1 text-[11px] font-medium text-slate-600 hover:text-red-700 hover:bg-red-50 rounded border border-slate-200 flex items-center gap-1 cursor-pointer shrink-0"
+              className="px-2 py-1 text-xs font-semibold text-slate-700 hover:text-red-700 hover:bg-red-50 rounded border border-slate-300 flex items-center gap-1 cursor-pointer shrink-0"
             >
               <Trash2 className="w-3 h-3" />
               Clear
@@ -393,31 +409,31 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({
           <button
             type="button"
             onClick={() => setModelMode('general')}
-            className={`px-2 py-1 text-[11px] font-medium rounded flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer transition-colors ${
+            className={`px-2 py-1.5 text-xs font-semibold rounded flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer transition-colors ${
               modelMode === 'general'
                 ? 'bg-white text-[#0B3D91] shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                : 'text-slate-800 hover:text-slate-950'
             }`}
           >
-            <Sparkles className="w-3 h-3" />
+            <Sparkles className="w-3.5 h-3.5" />
             Standard · 4-Hydrogen
           </button>
           <button
             type="button"
             onClick={() => setModelMode('fast')}
-            className={`px-2 py-1 text-[11px] font-medium rounded flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer transition-colors ${
+            className={`px-2 py-1.5 text-xs font-semibold rounded flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer transition-colors ${
               modelMode === 'fast'
                 ? 'bg-white text-[#0B3D91] shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                : 'text-slate-800 hover:text-slate-950'
             }`}
           >
-            <Zap className="w-3 h-3" />
+            <Zap className="w-3.5 h-3.5" />
             Fast Brief · 3.1-Lite
           </button>
         </div>
 
         {/* Grounded Telemetry Strip */}
-        <div className="px-2.5 py-1.5 rounded bg-slate-50 border border-slate-200 text-[11px] text-slate-600 font-mono truncate">
+        <div className="px-2.5 py-1.5 rounded bg-slate-50 border border-slate-200 text-xs text-slate-800 font-mono font-semibold truncate">
           Synced: {dataset.shortName} · {MONTH_ABBR[month - 1]} {year} · {modeMeta.shortLabel}
         </div>
       </div>
@@ -426,8 +442,8 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({
       <div className="flex-1 min-h-0 overflow-y-auto py-3 space-y-3">
         {messages.length === 0 ? (
           <div className="space-y-3">
-            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50/80 text-xs text-slate-600 leading-relaxed space-y-1.5">
-              <div className="font-semibold text-slate-900">
+            <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 text-[13px] text-slate-800 leading-relaxed space-y-1.5">
+              <div className="font-bold text-slate-950">
                 Multi-Turn Earth System Analysis Assistant
               </div>
               <p>
@@ -438,7 +454,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({
             </div>
 
             <div className="space-y-1.5">
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-700">
                 Suggested Questions
               </div>
               <div className="space-y-1.5">
@@ -447,7 +463,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({
                     key={q}
                     type="button"
                     onClick={() => void sendMessage(q)}
-                    className="w-full text-left px-2.5 py-2 rounded-md border border-slate-200 bg-white hover:border-[#0B3D91] hover:bg-blue-50/40 text-xs text-slate-700 transition-colors cursor-pointer"
+                    className="w-full text-left px-3 py-2 rounded-md border border-slate-300 bg-white hover:border-[#0B3D91] hover:bg-blue-50/50 text-[13px] font-medium text-slate-900 transition-colors cursor-pointer"
                   >
                     {q}
                   </button>
@@ -463,18 +479,18 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({
                 msg.role === 'user' ? 'items-end' : 'items-start'
               }`}
             >
-              <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500 px-0.5">
+              <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700 px-0.5">
                 {msg.role === 'user' ? (
                   <>
                     <span>Investigator</span>
-                    <User className="w-3 h-3 text-slate-500" />
+                    <User className="w-3 h-3 text-slate-700" />
                   </>
                 ) : (
                   <>
-                    <Bot className="w-3 h-3 text-[#0B3D91]" />
+                    <Bot className="w-3.5 h-3.5 text-[#0B3D91]" />
                     <span className="text-[#0B3D91]">Trend Detective AI</span>
                     {msg.modelName && (
-                      <span className="font-mono font-normal text-slate-400">
+                      <span className="font-mono font-medium text-slate-600">
                         ({msg.modelName})
                       </span>
                     )}
@@ -485,8 +501,8 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({
               <div
                 className={`max-w-[95%] rounded-lg px-3 py-2.5 border ${
                   msg.role === 'user'
-                    ? 'bg-[#0B3D91] border-[#0B3D91] text-white text-xs leading-relaxed'
-                    : 'bg-slate-50/90 border-slate-200 text-slate-800'
+                    ? 'bg-[#0B3D91] border-[#0B3D91] text-white text-[13px] font-medium leading-relaxed'
+                    : 'bg-slate-50 border-slate-200 text-slate-900'
                 }`}
               >
                 {msg.role === 'user' ? (
@@ -494,7 +510,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({
                 ) : msg.text ? (
                   <FormattedMessage text={msg.text} />
                 ) : (
-                  <span className="text-xs text-slate-500 font-mono">
+                  <span className="text-[13px] text-slate-700 font-mono font-medium">
                     Analyzing telemetry...
                   </span>
                 )}
@@ -504,7 +520,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({
         )}
 
         {errorMsg && (
-          <div className="p-2.5 rounded-md border border-red-200 bg-red-50 text-xs text-red-800">
+          <div className="p-2.5 rounded-md border border-red-200 bg-red-50 text-[13px] font-medium text-red-900">
             {errorMsg}
           </div>
         )}
@@ -521,13 +537,13 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({
         className="pt-2.5 border-t border-slate-200 space-y-2 shrink-0"
       >
         {messages.length > 0 && !isStreaming && (
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap gap-1.5">
             {quickPrompts.slice(0, 2).map((q) => (
               <button
                 key={q}
                 type="button"
                 onClick={() => void sendMessage(q)}
-                className="px-2 py-0.5 rounded border border-slate-200 bg-slate-50 hover:bg-slate-100 text-[10px] text-slate-600 truncate max-w-full cursor-pointer"
+                className="px-2 py-1 rounded border border-slate-300 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-800 truncate max-w-full cursor-pointer"
               >
                 {q}
               </button>
@@ -548,14 +564,14 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({
             }}
             placeholder="Ask about trends, opposing poles, significance, or RCP pathways..."
             aria-label="Ask Trend Detective AI"
-            className="flex-1 resize-none rounded-md border border-slate-300 bg-white px-2.5 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#0B3D91]"
+            className="flex-1 resize-none rounded-md border border-slate-300 bg-white px-2.5 py-2 text-[13px] text-slate-950 placeholder:text-slate-500 focus:outline-none focus:border-[#0B3D91]"
           />
           {isStreaming ? (
             <button
               type="button"
               onClick={stopStreaming}
               aria-label="Stop generating response"
-              className="px-3 py-2 rounded-md bg-slate-800 text-white hover:bg-slate-700 text-xs font-semibold flex items-center gap-1 cursor-pointer shrink-0 h-[52px]"
+              className="px-3.5 py-2 rounded-md bg-slate-800 text-white hover:bg-slate-700 text-[13px] font-bold flex items-center gap-1 cursor-pointer shrink-0 h-[56px]"
             >
               <Square className="w-3.5 h-3.5" />
               Stop
@@ -565,7 +581,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({
               type="submit"
               disabled={!input.trim()}
               aria-label="Send message"
-              className="px-3 py-2 rounded-md bg-[#0B3D91] text-white hover:bg-[#092E6E] disabled:opacity-45 disabled:cursor-not-allowed text-xs font-semibold flex items-center gap-1 cursor-pointer shrink-0 h-[52px]"
+              className="px-3.5 py-2 rounded-md bg-[#0B3D91] text-white hover:bg-[#092E6E] disabled:opacity-45 disabled:cursor-not-allowed text-[13px] font-bold flex items-center gap-1 cursor-pointer shrink-0 h-[56px]"
             >
               <Send className="w-3.5 h-3.5" />
               Ask

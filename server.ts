@@ -39,6 +39,10 @@ interface TelemetryContext {
   poleBSummary?: string;
   historicalSlopeComparison?: string;
   probedSummary?: string;
+  pettittSummary?: string;
+  roiSummary?: string;
+  correlationSummary?: string;
+  customCsvSummary?: string;
 }
 
 interface ChatRequestBody {
@@ -78,6 +82,10 @@ function buildSystemInstruction(ctx?: TelemetryContext): string {
         ctx.poleBSummary ? `Pole B (Deficit): ${ctx.poleBSummary}` : '',
         ctx.historicalSlopeComparison ? `Observed vs Projected Comparison: ${ctx.historicalSlopeComparison}` : '',
         ctx.probedSummary ? `User Probed Coordinate: ${ctx.probedSummary}` : '',
+        ctx.pettittSummary ? `Pettitt Change-Point Test: ${ctx.pettittSummary}` : '',
+        ctx.roiSummary ? `Active Area-Weighted Region (ROI): ${ctx.roiSummary}` : '',
+        ctx.correlationSummary ? `Cross-Sphere Correlation: ${ctx.correlationSummary}` : '',
+        ctx.customCsvSummary ? `Uploaded External CSV Series: ${ctx.customCsvSummary}` : '',
       ]
         .filter(Boolean)
         .join('\n')

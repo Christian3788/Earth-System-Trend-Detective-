@@ -5,9 +5,15 @@ import {
   MoveHorizontal,
   Crosshair,
   Cloud,
+  SquareDashedMousePointer,
+  ChevronLeft,
+  ChevronRight,
+  X,
 } from 'lucide-react';
 import { ThreeGlobeStage } from './ThreeGlobeStage';
 import {
+  BoundingBoxROI,
+  CaseFileSpec,
   DATA_MODE_META,
   DataMode,
   DatasetSpec,
@@ -52,6 +58,11 @@ interface MapViewportProps {
   onChangeCompareYear: (y: number) => void;
   probedPoint: { lat: number; lon: number } | null;
   onProbePoint: (lat: number, lon: number) => void;
+  activeRoi: BoundingBoxROI | null;
+  onSelectRoi: (roi: BoundingBoxROI | null) => void;
+  activeCase?: { spec: CaseFileSpec; stepIndex: number } | null;
+  onCaseStepChange?: (nextIdx: number) => void;
+  onCloseCase?: () => void;
 }
 
 const DEG2RAD = Math.PI / 180;
@@ -155,12 +166,26 @@ export const MapViewport: React.FC<MapViewportProps> = ({
   onChangeCompareYear,
   probedPoint,
   onProbePoint,
+  activeRoi,
+  onSelectRoi,
+  activeCase,
+  onCaseStepChange,
+  onCloseCase,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const [splitRatio, setSplitRatio] = useState(0.5);
   const draggingSplitRef = useRef(false);
+  const [boxSelectMode, setBoxSelectMode] = useState(false);
+  const boxDragRef = useRef<{
+    active: boolean;
+    startLat: number;
+    startLon: number;
+    curLat: number;
+    curLon: number;
+  } | null>(null);
+  const [draftBox, setDraftBox] = useState<BoundingBoxROI | null>(null);
 
   // Photorealistic Blue Marble controls
   const [overlayOpacity, setOverlayOpacity] = useState(0.52);
@@ -495,6 +520,34 @@ export const MapViewport: React.FC<MapViewportProps> = ({
         drawProbeMarker(ctx, projX(probedPoint.lon), projY(probedPoint.lat));
       }
 
+      const roiToDraw = draftBox ?? activeRoi;
+      if (roiToDraw) {
+        const rx1 = projX(Math.min(roiToDraw.minLon, roiToDraw.maxLon));
+        const rx2 = projX(Math.max(roiToDraw.minLon, roiToDraw.maxLon));
+        const ry1 = projY(Math.max(roiToDraw.minLat, roiToDraw.maxLat));
+        const ry2 = projY(Math.min(roiToDraw.minLat, roiToDraw.maxLat));
+        const rw = Math.max(4, rx2 - rx1);
+        const rh = Math.max(4, ry2 - ry1);
+        ctx.save();
+        ctx.fillStyle = draftBox ? 'rgba(14, 165, 233, 0.16)' : 'rgba(20, 184, 166, 0.14)';
+        ctx.fillRect(rx1, ry1, rw, rh);
+        ctx.strokeStyle = draftBox ? '#38BDF8' : '#2DD4BF';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(rx1, ry1, rw, rh);
+        ctx.setLineDash([]);
+
+        ctx.font = '700 10.5px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+        const tag = roiToDraw.label;
+        const tw = ctx.measureText(tag).width + 10;
+        const labelY = ry1 > y0 + 20 ? ry1 - 19 : ry1 + 4;
+        ctx.fillStyle = 'rgba(2, 6, 23, 0.88)';
+        ctx.fillRect(rx1, labelY, tw, 16);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText(tag, rx1 + 5, labelY + 11.5);
+        ctx.restore();
+      }
+
       if (compareEnabled) {
         const splitX = x0 + splitRatio * mapW;
         ctx.strokeStyle = '#FFFFFF';
@@ -504,26 +557,26 @@ export const MapViewport: React.FC<MapViewportProps> = ({
         ctx.lineTo(splitX, y0 + mapH);
         ctx.stroke();
 
-        ctx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, monospace';
+        ctx.font = '700 12px ui-monospace, SFMono-Regular, Menlo, monospace';
         const modeTag = dataMode !== 'historical' ? ` · ${DATA_MODE_META[dataMode].shortLabel}` : '';
         const leftTxt = `${MONTH_ABBR[month - 1]} ${year}${year > 2024 ? modeTag : ''}`;
         const rightTxt = `Compare: ${MONTH_ABBR[month - 1]} ${compareYear}${
           compareYear <= 2024 && dataMode !== 'historical' ? ' (Obs)' : compareYear > 2024 ? modeTag : ''
         }`;
-        const leftW = Math.ceil(ctx.measureText(leftTxt).width) + 14;
-        const rightW = Math.ceil(ctx.measureText(rightTxt).width) + 14;
+        const leftW = Math.ceil(ctx.measureText(leftTxt).width) + 16;
+        const rightW = Math.ceil(ctx.measureText(rightTxt).width) + 16;
 
         if (splitX - x0 > leftW + 14) {
-          ctx.fillStyle = 'rgba(11, 61, 145, 0.92)';
-          ctx.fillRect(splitX - leftW - 8, y0 + 8, leftW, 20);
+          ctx.fillStyle = 'rgba(11, 61, 145, 0.94)';
+          ctx.fillRect(splitX - leftW - 8, y0 + 8, leftW, 22);
           ctx.fillStyle = '#FFFFFF';
-          ctx.fillText(leftTxt, splitX - leftW - 1, y0 + 21);
+          ctx.fillText(leftTxt, splitX - leftW, y0 + 23);
         }
         if (x0 + mapW - splitX > rightW + 14) {
-          ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
-          ctx.fillRect(splitX + 8, y0 + 8, rightW, 20);
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+          ctx.fillRect(splitX + 8, y0 + 8, rightW, 22);
           ctx.fillStyle = '#FFFFFF';
-          ctx.fillText(rightTxt, splitX + 15, y0 + 21);
+          ctx.fillText(rightTxt, splitX + 16, y0 + 23);
         }
 
         const gripY = y0 + mapH * 0.5;
@@ -553,17 +606,17 @@ export const MapViewport: React.FC<MapViewportProps> = ({
       ctx.lineWidth = 1;
       ctx.strokeRect(x0, y0, mapW, mapH);
 
-      ctx.fillStyle = '#64748B';
-      ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+      ctx.fillStyle = '#334155';
+      ctx.font = '600 11px ui-monospace, SFMono-Regular, Menlo, monospace';
       ctx.textAlign = 'center';
       for (const lon of [-120, -60, 0, 60, 120]) {
         const label = lon === 0 ? '0°' : lon < 0 ? `${Math.abs(lon)}°W` : `${lon}°E`;
-        ctx.fillText(label, projX(lon), y0 + mapH + 13);
+        ctx.fillText(label, projX(lon), y0 + mapH + 15);
       }
       ctx.textAlign = 'right';
       for (const lat of [-60, 0, 60]) {
         const label = lat === 0 ? '0°' : lat < 0 ? `${Math.abs(lat)}°S` : `${lat}°N`;
-        ctx.fillText(label, x0 - 5, projY(lat) + 3);
+        ctx.fillText(label, x0 - 6, projY(lat) + 4);
       }
       ctx.textAlign = 'left';
     };
@@ -928,6 +981,8 @@ export const MapViewport: React.FC<MapViewportProps> = ({
     dataMode,
     autoSpin,
     wheelTick,
+    activeRoi,
+    draftBox,
   ]);
 
   const pointerToLatLon = (clientX: number, clientY: number): { lat: number; lon: number } | null => {
@@ -983,7 +1038,24 @@ export const MapViewport: React.FC<MapViewportProps> = ({
       }
       const coords = pointerToLatLon(e.clientX, e.clientY);
       if (coords) {
-        onProbePoint(coords.lat, coords.lon);
+        if (boxSelectMode) {
+          boxDragRef.current = {
+            active: true,
+            startLat: coords.lat,
+            startLon: coords.lon,
+            curLat: coords.lat,
+            curLon: coords.lon,
+          };
+          setDraftBox({
+            label: 'Custom ROI Box',
+            minLat: coords.lat,
+            maxLat: coords.lat,
+            minLon: coords.lon,
+            maxLon: coords.lon,
+          });
+        } else {
+          onProbePoint(coords.lat, coords.lon);
+        }
       }
     } else {
       const gs = globeStateRef.current;
@@ -1007,6 +1079,22 @@ export const MapViewport: React.FC<MapViewportProps> = ({
       const { x0, mapW } = get2DMapRect(rect.width, rect.height);
       const ratio = Math.max(0.06, Math.min(0.94, (e.clientX - rect.left - x0) / mapW));
       setSplitRatio(ratio);
+      return;
+    }
+
+    if (viewMode === '2d' && boxDragRef.current?.active) {
+      const coords = pointerToLatLon(e.clientX, e.clientY);
+      if (coords) {
+        boxDragRef.current.curLat = coords.lat;
+        boxDragRef.current.curLon = coords.lon;
+        setDraftBox({
+          label: 'Custom ROI Box',
+          minLat: Math.min(boxDragRef.current.startLat, coords.lat),
+          maxLat: Math.max(boxDragRef.current.startLat, coords.lat),
+          minLon: Math.min(boxDragRef.current.startLon, coords.lon),
+          maxLon: Math.max(boxDragRef.current.startLon, coords.lon),
+        });
+      }
       return;
     }
 
@@ -1045,6 +1133,27 @@ export const MapViewport: React.FC<MapViewportProps> = ({
       return;
     }
 
+    if (viewMode === '2d' && boxDragRef.current?.active) {
+      const b = boxDragRef.current;
+      boxDragRef.current = null;
+      setDraftBox(null);
+      const minLat = Math.round(Math.min(b.startLat, b.curLat) * 10) / 10;
+      const maxLat = Math.round(Math.max(b.startLat, b.curLat) * 10) / 10;
+      const minLon = Math.round(Math.min(b.startLon, b.curLon) * 10) / 10;
+      const maxLon = Math.round(Math.max(b.startLon, b.curLon) * 10) / 10;
+      if (Math.abs(maxLat - minLat) >= 2 && Math.abs(maxLon - minLon) >= 2) {
+        onSelectRoi({
+          label: `Custom ROI (${minLat.toFixed(0)}°..${maxLat.toFixed(0)}°, ${minLon.toFixed(0)}°..${maxLon.toFixed(0)}°)`,
+          minLat,
+          maxLat,
+          minLon,
+          maxLon,
+        });
+        setBoxSelectMode(false);
+      }
+      return;
+    }
+
     if (viewMode === '3d') {
       const gs = globeStateRef.current;
       const wasClick = gs.isDragging && !gs.dragMoved;
@@ -1076,15 +1185,15 @@ export const MapViewport: React.FC<MapViewportProps> = ({
           <div
             role="group"
             aria-label="Projection mode"
-            className="inline-flex items-center p-0.5 bg-slate-100 rounded-md border border-slate-200"
+            className="inline-flex items-center p-0.5 bg-slate-100 rounded-md border border-slate-300"
           >
             <button
               type="button"
               onClick={() => onChangeViewMode('2d')}
-              className={`px-2.5 py-1 text-xs font-medium rounded flex items-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors ${
+              className={`px-2.5 py-1 text-[13px] font-semibold rounded flex items-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors ${
                 viewMode === '2d'
                   ? 'bg-white text-[#0B3D91] shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  : 'text-slate-800 hover:text-slate-950'
               }`}
             >
               <MapIcon className="w-3.5 h-3.5" />
@@ -1093,10 +1202,10 @@ export const MapViewport: React.FC<MapViewportProps> = ({
             <button
               type="button"
               onClick={() => onChangeViewMode('3d')}
-              className={`px-2.5 py-1 text-xs font-medium rounded flex items-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors ${
+              className={`px-2.5 py-1 text-[13px] font-semibold rounded flex items-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors ${
                 viewMode === '3d'
                   ? 'bg-white text-[#0B3D91] shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  : 'text-slate-800 hover:text-slate-950'
               }`}
             >
               <Globe className="w-3.5 h-3.5" />
@@ -1105,7 +1214,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
           </div>
 
           {/* Mask Scientific Noise Checkbox */}
-          <label className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-200 bg-slate-50/70 text-xs font-medium text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">
+          <label className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-300 bg-slate-50 text-xs font-semibold text-slate-800 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">
             <input
               type="checkbox"
               checked={maskNoise}
@@ -1116,18 +1225,18 @@ export const MapViewport: React.FC<MapViewportProps> = ({
           </label>
 
           {/* Clouds & Grid toggles */}
-          <label className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-slate-200 bg-white text-xs font-medium text-slate-700 cursor-pointer hover:bg-slate-50 select-none whitespace-nowrap">
+          <label className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-300 bg-white text-xs font-semibold text-slate-800 cursor-pointer hover:bg-slate-50 select-none whitespace-nowrap">
             <input
               type="checkbox"
               checked={showClouds}
               onChange={(e) => setShowClouds(e.target.checked)}
               className="w-3.5 h-3.5 accent-[#0B3D91] rounded cursor-pointer"
             />
-            <Cloud className="w-3.5 h-3.5 text-slate-500" />
+            <Cloud className="w-3.5 h-3.5 text-slate-700" />
             Clouds
           </label>
 
-          <label className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-slate-200 bg-white text-xs font-medium text-slate-700 cursor-pointer hover:bg-slate-50 select-none whitespace-nowrap">
+          <label className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-300 bg-white text-xs font-semibold text-slate-800 cursor-pointer hover:bg-slate-50 select-none whitespace-nowrap">
             <input
               type="checkbox"
               checked={showGraticules}
@@ -1140,7 +1249,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
 
         {/* Right Toolbar: Overlay Opacity + Mode Controls */}
         <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-1.5 text-[11px] font-medium text-slate-600 whitespace-nowrap">
+          <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 whitespace-nowrap">
             <span>Data Overlay</span>
             <input
               type="range"
@@ -1152,14 +1261,37 @@ export const MapViewport: React.FC<MapViewportProps> = ({
               className="w-16 nasa-slider"
               aria-label="Anomaly overlay opacity"
             />
-            <span className="font-mono tabular-nums w-8 text-slate-800">
+            <span className="font-mono font-bold tabular-nums w-9 text-slate-950">
               {Math.round(overlayOpacity * 100)}%
             </span>
           </label>
 
           {viewMode === '2d' ? (
-            <div className="flex items-center gap-1.5">
-              <label className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-200 bg-white text-xs font-medium text-slate-700 cursor-pointer hover:bg-slate-50 select-none whitespace-nowrap">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setBoxSelectMode((b) => !b)}
+                title="Drag a bounding box on the 2D map to compute area-weighted regional statistics"
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer ${
+                  boxSelectMode
+                    ? 'bg-teal-700 text-white border-teal-700'
+                    : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
+                }`}
+              >
+                <SquareDashedMousePointer className="w-3.5 h-3.5" />
+                {boxSelectMode ? 'Drag Box Now…' : 'Box ROI'}
+              </button>
+              {activeRoi && (
+                <button
+                  type="button"
+                  onClick={() => onSelectRoi(null)}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-teal-300 bg-teal-50 text-xs font-semibold text-teal-900 hover:bg-teal-100 whitespace-nowrap cursor-pointer"
+                >
+                  Clear ROI
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+              <label className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-300 bg-white text-xs font-semibold text-slate-800 cursor-pointer hover:bg-slate-50 select-none whitespace-nowrap">
                 <input
                   type="checkbox"
                   checked={compareEnabled}
@@ -1174,7 +1306,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
                   aria-label="Comparison baseline year"
                   value={compareYear}
                   onChange={(e) => onChangeCompareYear(Number(e.target.value))}
-                  className="px-2 py-1 text-xs font-mono font-medium bg-white border border-slate-300 rounded-md text-slate-800 focus:outline-none focus:border-[#0B3D91] cursor-pointer"
+                  className="px-2 py-1 text-xs font-mono font-bold bg-white border border-slate-300 rounded-md text-slate-950 focus:outline-none focus:border-[#0B3D91] cursor-pointer"
                 >
                   {(dataMode === 'historical'
                     ? Array.from({ length: 20 }, (_, i) => 2005 + i)
@@ -1190,24 +1322,75 @@ export const MapViewport: React.FC<MapViewportProps> = ({
             </div>
           ) : webglUnavailable ? (
             <div className="flex items-center gap-1.5">
-              <span className="text-[11px] font-medium text-slate-600 px-2 py-1 rounded border border-slate-200 bg-slate-50 whitespace-nowrap">
+              <span className="text-xs font-semibold text-slate-800 px-2.5 py-1 rounded border border-slate-300 bg-slate-50 whitespace-nowrap">
                 3D Orthographic Globe · Drag to Orbit · Click to Probe
               </span>
               <button
                 type="button"
                 onClick={() => setWebglUnavailable(false)}
-                className="text-[11px] font-medium text-[#0B3D91] px-2 py-1 rounded border border-slate-300 bg-white hover:bg-slate-50 whitespace-nowrap cursor-pointer"
+                className="text-xs font-semibold text-[#0B3D91] px-2.5 py-1 rounded border border-slate-300 bg-white hover:bg-slate-50 whitespace-nowrap cursor-pointer"
               >
                 Retry WebGL
               </button>
             </div>
           ) : (
-            <span className="text-[11px] font-medium text-slate-600 px-2 py-1 rounded border border-slate-200 bg-slate-50 whitespace-nowrap">
+            <span className="text-xs font-semibold text-slate-800 px-2.5 py-1 rounded border border-slate-300 bg-slate-50 whitespace-nowrap">
               Three.js PBR Observatory · Drag to Orbit · Click to Probe
             </span>
           )}
         </div>
       </div>
+
+      {/* Guided Case File Mission Banner (non-blocking) */}
+      {activeCase && activeCase.spec.steps[activeCase.stepIndex] && (
+        <div className="bg-[#0B3D91] text-white px-4 py-2 border-b border-blue-900 flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 text-[11px] font-mono font-bold text-cyan-300">
+              <span>{activeCase.spec.badge}</span>
+              <span>·</span>
+              <span>
+                STEP {activeCase.stepIndex + 1} / {activeCase.spec.steps.length}:{' '}
+                {activeCase.spec.steps[activeCase.stepIndex].title}
+              </span>
+            </div>
+            <div className="text-xs font-medium text-blue-50 mt-0.5 leading-snug">
+              <strong className="text-white">
+                {activeCase.spec.steps[activeCase.stepIndex].question}
+              </strong>{' '}
+              {activeCase.spec.steps[activeCase.stepIndex].explanation}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              disabled={activeCase.stepIndex === 0}
+              onClick={() => onCaseStepChange?.(activeCase.stepIndex - 1)}
+              className="px-2 py-1 text-xs font-semibold rounded border border-white/30 bg-white/10 hover:bg-white/20 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-0.5 cursor-pointer"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+              Prev
+            </button>
+            <button
+              type="button"
+              disabled={activeCase.stepIndex >= activeCase.spec.steps.length - 1}
+              onClick={() => onCaseStepChange?.(activeCase.stepIndex + 1)}
+              className="px-2.5 py-1 text-xs font-bold rounded bg-cyan-400 text-slate-950 hover:bg-cyan-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-0.5 cursor-pointer"
+            >
+              Next Step
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={onCloseCase}
+              aria-label="Exit guided case mission"
+              className="p-1 rounded border border-white/25 bg-white/10 hover:bg-white/25 text-white cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Canvas Stage */}
       <div
@@ -1256,14 +1439,14 @@ export const MapViewport: React.FC<MapViewportProps> = ({
         <div
           className={`absolute ${
             viewMode === '3d' ? 'top-3 left-3' : 'bottom-3 left-3'
-          } px-2.5 py-1.5 rounded-md border text-[11px] font-mono tabular-nums pointer-events-none flex items-center gap-2.5 ${
+          } px-3 py-1.5 rounded-md border text-xs font-mono font-semibold tabular-nums pointer-events-none flex items-center gap-2.5 ${
             viewMode === '3d'
-              ? 'border-slate-700 text-slate-100'
-              : 'bg-white/95 border-slate-300 text-slate-800 shadow-xs'
+              ? 'border-slate-600 text-white'
+              : 'bg-white border-slate-300 text-slate-950 shadow-sm'
           }`}
-          style={viewMode === '3d' ? { backgroundColor: 'rgba(2, 6, 23, 0.88)' } : undefined}
+          style={viewMode === '3d' ? { backgroundColor: 'rgba(2, 6, 23, 0.92)' } : undefined}
         >
-          <Crosshair className="w-3.5 h-3.5 shrink-0 text-[#06B6D4]" />
+          <Crosshair className="w-3.5 h-3.5 shrink-0 text-[#22D3EE]" />
           {hoverInfo ? (
             <>
               <span>{formatCoord(hoverInfo.lat, hoverInfo.lon)}</span>
@@ -1276,7 +1459,17 @@ export const MapViewport: React.FC<MapViewportProps> = ({
               {!Number.isNaN(hoverInfo.val) && (
                 <>
                   <span aria-hidden="true">·</span>
-                  <span className={hoverInfo.significant ? 'text-emerald-400 font-semibold' : 'text-slate-400'}>
+                  <span
+                    className={`font-bold ${
+                      hoverInfo.significant
+                        ? viewMode === '3d'
+                          ? 'text-emerald-300'
+                          : 'text-emerald-800'
+                        : viewMode === '3d'
+                        ? 'text-slate-200'
+                        : 'text-slate-700'
+                    }`}
+                  >
                     {hoverInfo.significant ? 'p < 0.05' : 'p >= 0.05'}
                   </span>
                 </>
@@ -1328,22 +1521,22 @@ function drawReticle(
   ctx.lineTo(x, y + 15);
   ctx.stroke();
 
-  ctx.font = '600 10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  ctx.font = '700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
   const tw = ctx.measureText(label).width;
-  const padX = 5;
+  const padX = 6;
   const boxW = tw + padX * 2;
-  const boxH = 16;
+  const boxH = 18;
   const lx = align === 'right' ? x + 14 : x - 14 - boxW;
   const ly = y - boxH * 0.5;
 
-  ctx.fillStyle = darkBg ? 'rgba(2, 6, 23, 0.88)' : 'rgba(255, 255, 255, 0.92)';
+  ctx.fillStyle = darkBg ? 'rgba(2, 6, 23, 0.92)' : 'rgba(255, 255, 255, 0.96)';
   ctx.fillRect(lx, ly, boxW, boxH);
   ctx.strokeStyle = color;
-  ctx.lineWidth = 1;
+  ctx.lineWidth = 1.25;
   ctx.strokeRect(lx, ly, boxW, boxH);
 
-  ctx.fillStyle = darkBg ? '#F8FAFC' : '#0F172A';
-  ctx.fillText(label, lx + padX, ly + 11.5);
+  ctx.fillStyle = darkBg ? '#FFFFFF' : '#0F172A';
+  ctx.fillText(label, lx + padX, ly + 13);
   ctx.restore();
 }
 
